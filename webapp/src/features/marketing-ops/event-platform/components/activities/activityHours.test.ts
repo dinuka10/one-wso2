@@ -25,6 +25,7 @@ import {
   canSaveActivity,
   closesBeforeOpening,
   hoursChipLabel,
+  isRemovedDay,
   isValidHoursRow,
   minuteLabel,
   newHoursRow,
@@ -95,6 +96,11 @@ describe("validation", () => {
   it("wants a row on one of the event's days", () => {
     expect(isValidHoursRow({ dayId: "d2", startMinute: 0, endMinute: 60 }, days)).toBe(true);
     expect(isValidHoursRow({ dayId: "gone", startMinute: 0, endMinute: 60 }, days)).toBe(false);
+  });
+
+  it("flags a row whose day the event no longer has, so the form can say why Save is off", () => {
+    expect(isRemovedDay({ dayId: "d2", startMinute: 0, endMinute: 60 }, days)).toBe(false);
+    expect(isRemovedDay({ dayId: "gone", startMinute: 0, endMinute: 60 }, days)).toBe(true);
   });
 
   it("wants a name and valid rows before saving", () => {

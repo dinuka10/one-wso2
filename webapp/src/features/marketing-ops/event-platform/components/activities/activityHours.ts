@@ -66,9 +66,14 @@ export function closesBeforeOpening(row: ActivityHoursInput): boolean {
   return row.endMinute <= row.startMinute;
 }
 
+/** Whether a row's day is gone from the event, e.g. after Settings shortened it. */
+export function isRemovedDay(row: ActivityHoursInput, days: readonly ConferenceDay[]): boolean {
+  return !days.some((d) => d.id === row.dayId);
+}
+
 /** Whether a row can be saved: it names one of the event's days and closes after it opens. */
 export function isValidHoursRow(row: ActivityHoursInput, days: readonly ConferenceDay[]): boolean {
-  return days.some((d) => d.id === row.dayId) && !closesBeforeOpening(row);
+  return !isRemovedDay(row, days) && !closesBeforeOpening(row);
 }
 
 export function canSaveActivity(values: ActivityFormValues, days: readonly ConferenceDay[]): boolean {

@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormHelperText,
   IconButton,
   InputLabel,
   MenuItem,
@@ -45,6 +46,7 @@ import { PICKER_SLOT_PROPS } from "../pickerSlotProps";
 import {
   canSaveActivity,
   closesBeforeOpening,
+  isRemovedDay,
   newHoursRow,
   toActivityFormValues,
   type ActivityFormValues,
@@ -120,21 +122,30 @@ export default function ActivityForm({
             {fields.map((field, index) => {
               const row = hours[index];
               const backwards = row ? closesBeforeOpening(row) : false;
+              const removedDay = row ? isRemovedDay(row, days) : false;
               return (
                 <Box key={field.id} sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
                   <Controller
                     control={control}
                     name={`hours.${index}.dayId`}
                     render={({ field: dayField }) => (
-                      <FormControl size="small" sx={{ minWidth: 170 }}>
+                      <FormControl size="small" sx={{ minWidth: 170 }} error={removedDay}>
                         <InputLabel>Day</InputLabel>
                         <Select label="Day" value={dayField.value} onChange={(e) => dayField.onChange(e.target.value)}>
+                          {/* Keeps the stored value among the options, so the
+                              picker says what it holds instead of going blank. */}
+                          {removedDay && (
+                            <MenuItem value={dayField.value} disabled>
+                              Removed day
+                            </MenuItem>
+                          )}
                           {days.map((day, i) => (
                             <MenuItem key={day.id} value={day.id}>
                               {dayOptionLabel(day, i)}
                             </MenuItem>
                           ))}
                         </Select>
+                        {removedDay && <FormHelperText>This day was removed</FormHelperText>}
                       </FormControl>
                     )}
                   />
@@ -192,7 +203,9 @@ export default function ActivityForm({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button disabled={isPending} onClick={onClose}>
+          Cancel
+        </Button>
         <Button variant="contained" disabled={!canSubmit} onClick={() => void submit()}>
           {isPending ? <CircularProgress size={16} /> : "Save"}
         </Button>

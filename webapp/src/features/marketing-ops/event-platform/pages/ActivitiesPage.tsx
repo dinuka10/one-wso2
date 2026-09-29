@@ -78,9 +78,11 @@ export default function ActivitiesPage() {
   // Save must update it, not create it again: the source did the latter, which
   // the duplicate-name check then refused.
   const createdRef = useRef<Activity | null>(null);
+  // The whole save, not each call: between the create and the hours PUT no
+  // mutation is pending, and the dialog must not close there either.
+  const [saving, setSaving] = useState(false);
 
   const days = [...(event?.days ?? [])].sort((a, b) => a.dayIndex - b.dayIndex);
-  const isPending = createActivity.isPending || updateActivity.isPending || replaceHours.isPending;
 
   const closeForm = () => {
     setEditing(undefined);
@@ -90,6 +92,7 @@ export default function ActivitiesPage() {
   const handleSave = async (values: ActivityFormValues) => {
     const existing = editing ?? createdRef.current ?? undefined;
     const plan = planActivitySave(existing, values);
+    setSaving(true);
     try {
       let id = existing?.id;
       if (plan.details === "create") {
@@ -110,6 +113,8 @@ export default function ActivitiesPage() {
       closeForm();
     } catch (err) {
       showError(activitySaveErrorMessage(err, values.name, !editing && createdRef.current !== null));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -194,13 +199,15 @@ export default function ActivitiesPage() {
         </TableContainer>
       )}
 
-      <Dialog open={editing !== undefined} onClose={closeForm} maxWidth="md" fullWidth>
+      {/* Shut only between saves: closing mid-save would let the late
+          result land on whatever dialog opens next. */}
+      <Dialog open={editing !== undefined} onClose={saving ? undefined : closeForm} maxWidth="md" fullWidth>
         {editing !== undefined && (
           <ActivityForm
             key={editing?.id ?? "new"}
             initial={editing ?? undefined}
             days={days}
-            isPending={isPending}
+            isPending={saving}
             onSave={(values) => void handleSave(values)}
             onClose={closeForm}
           />
