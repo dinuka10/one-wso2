@@ -58,6 +58,7 @@ import {
   type ItemKind,
 } from "@features/marketing-ops/event-platform/utils/agenda";
 import { formatDayLabel, isValidDate, minuteToTime } from "@features/marketing-ops/event-platform/utils/dateTime";
+import SpeakerFormDialog from "@features/marketing-ops/event-platform/components/speakers/SpeakerFormDialog";
 import SpeakerRoleDialog from "./SpeakerRoleDialog";
 import { isItemFormValid, itemFormDefaults, type ItemFormValues } from "./itemForm";
 
@@ -99,6 +100,7 @@ export default function ItemFormDialog({
     name: ["kind", "title", "dayId", "topicIsManual", "speakerAssignments"],
   });
   const [roleDialog, setRoleDialog] = useState<RoleDialogState>(null);
+  const [addingSpeaker, setAddingSpeaker] = useState(false);
 
   const { data: speakers = [] } = useListSpeakers();
   const { data: rooms = [] } = useListRooms(configId);
@@ -120,8 +122,8 @@ export default function ItemFormDialog({
   const handleKeyDown = useSubmitShortcut(submit, isValid && !isPending);
 
   // Asks for the role of a speaker being added, defaulting to the one their
-  // speaker type implies. The inline "create a new speaker" flow (phase 3's
-  // SpeakerFormDialog) should call this with the speaker it just created.
+  // speaker type implies. Also the last step of creating a speaker inline, so
+  // a new speaker lands on the session in one go, as in the source.
   const openAddRole = (speaker: Speaker) =>
     setRoleDialog({
       type: "add",
@@ -330,6 +332,22 @@ export default function ItemFormDialog({
               })}
             </Box>
           )}
+
+          {presenter && (
+            <Button size="small" onClick={() => setAddingSpeaker(true)} sx={{ alignSelf: "flex-start", mt: -0.5 }}>
+              + Create new speaker
+            </Button>
+          )}
+
+          <SpeakerFormDialog
+            open={addingSpeaker}
+            speaker={null}
+            onClose={() => setAddingSpeaker(false)}
+            onSaved={(speaker) => {
+              setAddingSpeaker(false);
+              openAddRole(speaker);
+            }}
+          />
 
           {roleDialog && (
             <SpeakerRoleDialog
