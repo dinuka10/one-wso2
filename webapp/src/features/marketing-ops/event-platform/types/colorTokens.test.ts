@@ -15,7 +15,15 @@
 // under the License.
 
 import { describe, expect, it } from "vitest";
-import { colorTokenOf, COLOR_TOKEN_NAMES, DEFAULT_COLOR_TOKEN, isColorToken } from "./colorTokens";
+import {
+  colorTokenHex,
+  colorTokenLabel,
+  colorTokenOf,
+  COLOR_TOKEN_NAMES,
+  COLOR_TOKENS,
+  DEFAULT_COLOR_TOKEN,
+  isColorToken,
+} from "./colorTokens";
 
 describe("the colour token vocabulary", () => {
   // The backend's CHECK constraint allows exactly these; a change here without
@@ -44,5 +52,21 @@ describe("the colour token vocabulary", () => {
     expect(colorTokenOf(null)).toBe("main");
     expect(colorTokenOf("teal")).toBe("main");
     expect(colorTokenOf("blue")).toBe("blue");
+  });
+});
+
+describe("the colour token swatches", () => {
+  it("has one swatch per name, in picker order", () => {
+    expect(COLOR_TOKENS.map((t) => t.token)).toEqual([...COLOR_TOKEN_NAMES]);
+  });
+
+  it("falls back to the main swatch for an unknown token", () => {
+    expect(colorTokenHex("teal")).toBe(colorTokenHex("main"));
+    expect(colorTokenLabel(undefined)).toBe("Main");
+  });
+
+  it("lightens dark-blue for the dark scheme, where the light hex vanishes", () => {
+    expect(colorTokenHex("dark-blue", "dark")).not.toBe(colorTokenHex("dark-blue"));
+    expect(colorTokenHex("red", "dark")).toBe(colorTokenHex("red", "light"));
   });
 });

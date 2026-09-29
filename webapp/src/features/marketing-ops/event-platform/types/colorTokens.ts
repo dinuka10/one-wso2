@@ -21,8 +21,7 @@
 // lets them theme per appearance. So no hex ever travels over the API, and a
 // ninth name needs the constraint changed first.
 //
-// The swatch hexes the source keeps next to these are UI, and land with the
-// screens that draw them, re-checked against both colour schemes.
+// The swatch hexes below are only for this admin tool's own swatches and board.
 
 export const COLOR_TOKEN_NAMES = [
   "red",
@@ -49,4 +48,44 @@ export function isColorToken(value: unknown): value is ColorToken {
 
 export function colorTokenOf(value: string | null | undefined): ColorToken {
   return isColorToken(value) ? value : DEFAULT_COLOR_TOKEN;
+}
+
+export type ColorScheme = "light" | "dark";
+
+export interface ColorTokenSwatch {
+  label: string;
+  light: string;
+  dark: string;
+}
+
+// Light values are the source's, unchanged, so the board matches what the
+// downstream apps draw. Dark values differ only where the light hex would
+// vanish against a dark surface: dark-blue is 1.2:1 there, purple 3.2:1.
+const SWATCHES: Record<ColorToken, ColorTokenSwatch> = {
+  red: { label: "Red", light: "#e0414a", dark: "#e0414a" },
+  orange: { label: "Orange", light: "#ee7b30", dark: "#ee7b30" },
+  yellow: { label: "Yellow", light: "#d4a900", dark: "#d4a900" },
+  green: { label: "Green", light: "#2faf5a", dark: "#2faf5a" },
+  blue: { label: "Blue", light: "#08baf6", dark: "#08baf6" },
+  purple: { label: "Purple", light: "#9104f5", dark: "#b36bff" },
+  "dark-blue": { label: "Dark blue", light: "#1c1565", dark: "#7b72e0" },
+  main: { label: "Main", light: "#9297af", dark: "#9297af" },
+};
+
+// Ordered for pickers: swatches read left to right in this order everywhere.
+export const COLOR_TOKENS: ReadonlyArray<{ token: ColorToken } & ColorTokenSwatch> =
+  COLOR_TOKEN_NAMES.map((token) => ({ token, ...SWATCHES[token] }));
+
+export function colorTokenSwatch(value: string | null | undefined): ColorTokenSwatch {
+  return SWATCHES[colorTokenOf(value)];
+}
+
+// Pick the scheme in `sx` with `theme.applyStyles("dark", …)` rather than
+// reading `palette.mode`, which does not follow the CSS-variables scheme switch.
+export function colorTokenHex(value: string | null | undefined, scheme: ColorScheme = "light"): string {
+  return colorTokenSwatch(value)[scheme];
+}
+
+export function colorTokenLabel(value: string | null | undefined): string {
+  return colorTokenSwatch(value).label;
 }
