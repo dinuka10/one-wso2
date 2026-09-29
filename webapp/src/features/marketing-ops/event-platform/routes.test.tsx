@@ -67,6 +67,13 @@ vi.mock("./pages/ActivitiesPage", async () => {
   return { default: () => <ComingSoon screen="Activities" phase={4} /> };
 });
 
+// The finished agenda editor needs a QueryClient and a sign-in; these tests are
+// about which leaf a URL reaches, so it renders as the placeholder it replaced.
+vi.mock("./pages/SessionEditorPage", async () => {
+  const { default: ComingSoon } = await import("./components/ComingSoon");
+  return { default: () => <ComingSoon screen="Agenda" phase={5} /> };
+});
+
 const gate = vi.hoisted(() => ({ value: {} as MarketingOpsGate }));
 vi.mock("@features/marketing-ops/api/useMarketingOpsGate", () => ({
   useMarketingOpsGate: () => gate.value,
