@@ -14,6 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Box, FormControl, InputLabel, MenuItem, Select, Typography } from "@wso2/oxygen-ui";
 import { useAllTracks, useUpdateTrack } from "@features/marketing-ops/event-platform/api/tracks";
 import {
@@ -26,6 +27,7 @@ import {
   useUpdateRoomMappings,
 } from "@features/marketing-ops/event-platform/api/rooms";
 import { useNotifyFailure } from "@features/marketing-ops/event-platform/api/base";
+import { eventPlatformKeys as keys } from "@features/marketing-ops/event-platform/api/queryKeys";
 import {
   COLOR_TOKENS,
   colorTokenHex,
@@ -116,6 +118,7 @@ function RoomSelect({
   rooms,
   emptyLabel,
   emptyValueLabel,
+  disabled,
   onChange,
 }: {
   label: string;
@@ -125,10 +128,11 @@ function RoomSelect({
   // What the closed picker says when nothing is chosen, when that should say
   // more than the menu option does (a section shows what it inherits).
   emptyValueLabel?: string;
+  disabled?: boolean;
   onChange: (roomId: string | null) => void;
 }) {
   return (
-    <FormControl size="small" sx={{ minWidth: 220 }}>
+    <FormControl size="small" sx={{ minWidth: 220 }} disabled={disabled}>
       <InputLabel shrink>{label}</InputLabel>
       <Select
         label={label}
@@ -166,6 +170,7 @@ export default function RoomMappingTree({
   rooms: readonly Room[];
 }) {
   const notifyFailure = useNotifyFailure();
+  const qc = useQueryClient();
   const { data: tracks = [] } = useAllTracks();
   const { data: mappings } = useRoomMappings(eventId);
   // Only this event's tracks: the list is every event's, and each track here
@@ -190,7 +195,9 @@ export default function RoomMappingTree({
       { onError: (err) => notifyFailure("Couldn't change the keynote room.", err) },
     );
 
-  // A track PATCH writes both fields, so the one not being changed is sent as is.
+  // A track PATCH writes both fields, so the one not being changed is sent as
+  // is — which is why the track pickers are shut while one is in flight: a
+  // second PATCH from the old snapshot would undo the first.
   const patchTrack = (track: Track, change: { colorToken?: ColorToken | null; roomId?: string | null }) =>
     updateTrack.mutate(
       {
@@ -200,7 +207,13 @@ export default function RoomMappingTree({
         roomId: track.roomId,
         ...change,
       },
-      { onError: (err) => notifyFailure("Couldn't update the track.", err) },
+      {
+        onSuccess: () => {
+          // A track's room is its sessions' room; the hook leaves sessions be.
+          if ("roomId" in change) void qc.invalidateQueries({ queryKey: keys.sessionsRoot });
+        },
+        onError: (err) => notifyFailure("Couldn't update the track.", err),
+      },
     );
 
   const setRoomColor = (roomId: string, colorToken: ColorToken | null) =>
@@ -275,10 +288,12 @@ export default function RoomMappingTree({
                       value={track.roomId}
                       rooms={rooms}
                       emptyLabel="No room"
+                      disabled={updateTrack.isPending}
                       onChange={(roomId) => patchTrack(track, { roomId })}
                     />
                     <ColorTokenSelect
                       value={track.colorToken}
+                      disabled={updateTrack.isPending}
                       onChange={(colorToken) => patchTrack(track, { colorToken })}
                     />
                     {override && (

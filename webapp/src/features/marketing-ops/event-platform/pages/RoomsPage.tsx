@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useParams } from "react-router";
 import { useForm } from "react-hook-form";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Box,
@@ -52,6 +53,7 @@ import {
   useUpdateRoom,
 } from "@features/marketing-ops/event-platform/api/rooms";
 import { useNotifyFailure } from "@features/marketing-ops/event-platform/api/base";
+import { eventPlatformKeys as keys } from "@features/marketing-ops/event-platform/api/queryKeys";
 import { useSubmitShortcut } from "@features/marketing-ops/event-platform/hooks/useSubmitShortcut";
 import type { Room } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
 import RoomMappingTree from "../components/rooms/RoomMappingTree";
@@ -111,6 +113,7 @@ export default function RoomsPage() {
   const { data: event } = useEvent(eventId);
   const { data: rooms = [], isLoading, isError, error, refetch, isFetching } = useListRooms(eventId);
   const notifyFailure = useNotifyFailure();
+  const qc = useQueryClient();
   const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
   // Optimistic, and raises its own "reverted" toast.
@@ -149,7 +152,22 @@ export default function RoomsPage() {
       title: "Delete room",
       text: `Remove "${room.name}"? Sessions in it fall back to whatever their section, track or the keynote mapping says. This cannot be undone.`,
       confirmLabel: "Delete",
-      confirmAction: () => deleteRoom.mutate({ id: room.id, configId: room.configId }),
+      confirmAction: () =>
+        deleteRoom.mutate(
+          { id: room.id, configId: room.configId },
+          {
+            // The server clears the deleted room wherever it was mapped. The
+            // hook refreshes rooms, tracks and sessions only; the keynote room
+            // (on the mappings and on the event, which Settings upserts whole)
+            // and the section mappings need refreshing too, or they keep the
+            // dead id and send it back on the next save.
+            onSettled: () => {
+              void qc.invalidateQueries({ queryKey: keys.roomMappings(room.configId) });
+              void qc.invalidateQueries({ queryKey: keys.event(room.configId) });
+              void qc.invalidateQueries({ queryKey: keys.trackSectionsRoot });
+            },
+          },
+        ),
     });
 
   const askReapply = () =>
