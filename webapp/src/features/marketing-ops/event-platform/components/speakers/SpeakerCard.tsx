@@ -81,9 +81,18 @@ export default function SpeakerCard({
           position: "relative",
         }}
       >
+        {/* A button to the keyboard too, so the full bio isn't mouse-only. */}
         <CardContent
+          role="button"
+          tabIndex={0}
+          aria-label={`Preview ${speaker.name}`}
           sx={{ flex: 1, textAlign: "center", cursor: "pointer" }}
           onClick={() => onPreview(speaker)}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+            e.preventDefault();
+            onPreview(speaker);
+          }}
         >
           <Avatar
             src={speaker.photoUrl ?? undefined}
