@@ -108,6 +108,13 @@ describe("parseSpeakerCsv", () => {
     expect(rows[1].status).toBe("new");
   });
 
+  it("marks a later row repeating a name in the same file invalid, in any case", () => {
+    const csv = "name,title\nNew Person,A\n new PERSON ,B\nSpeaker One,C\nspeaker one,D";
+    const { rows } = parseSpeakerCsv(csv, [speaker()]);
+    expect(rows.map((r) => r.status)).toEqual(["new", "invalid", "duplicate", "invalid"]);
+    expect(rows.filter(isActionableRow)).toHaveLength(1);
+  });
+
   it("skips blank lines, CRLF endings and a byte-order mark", () => {
     const { rows } = parseSpeakerCsv("\uFEFFname,title\r\n\r\nA,X\r\n   \r\nB,Y\r\n", []);
     expect(rows.map((r) => r.parsed.name)).toEqual(["A", "B"]);

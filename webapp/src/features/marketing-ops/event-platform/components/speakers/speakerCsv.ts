@@ -81,8 +81,8 @@ function toSpeakerType(raw: string): SpeakerType {
 /**
  * Reads a speaker CSV (first row a header) into preview rows, each marked
  * new, duplicate (a library speaker has the same name — kept unless the user
- * chooses to replace it) or invalid (no name). `error` is set, and `rows`
- * empty, when there is nothing to import.
+ * chooses to replace it) or invalid (no name, or the name of an earlier row in
+ * the file). `error` is set, and `rows` empty, when there is nothing to import.
  */
 export function parseSpeakerCsv(text: string, existing: readonly Speaker[]): SpeakerCsvParseResult {
   const result = Papa.parse<Record<string, string | undefined>>(text.replace(/^\uFEFF/, ""), {
@@ -101,6 +101,9 @@ export function parseSpeakerCsv(text: string, existing: readonly Speaker[]): Spe
   }
 
   const byName = new Map(existing.map((s) => [nameKey(s.name), s]));
+  // Only the first row with a name counts. A later one would create that
+  // speaker a second time, or replace the one the first row already replaced.
+  const seen = new Set<string>();
 
   const rows = result.data.map((record): SpeakerPreviewRow => {
     const get = (column: (typeof SPEAKER_CSV_COLUMNS)[number]) => (record[column] ?? "").trim();
@@ -113,8 +116,10 @@ export function parseSpeakerCsv(text: string, existing: readonly Speaker[]): Spe
       linkedinUrl: get("linkedin_url"),
       photoUrl: get("photo_url"),
     };
-    if (!parsed.name) return { parsed, status: "invalid", duplicateAction: "keep" };
-    const match = byName.get(nameKey(parsed.name));
+    const key = nameKey(parsed.name);
+    if (!parsed.name || seen.has(key)) return { parsed, status: "invalid", duplicateAction: "keep" };
+    seen.add(key);
+    const match = byName.get(key);
     if (match) return { parsed, status: "duplicate", existing: match, duplicateAction: "keep" };
     return { parsed, status: "new", duplicateAction: "keep" };
   });

@@ -130,8 +130,10 @@ export default function SpeakerCsvImportDialog({ open, onClose }: SpeakerCsvImpo
     setParseError(null);
   }
 
-  function handleDone() {
-    void queryClient.invalidateQueries({ queryKey: keys.speakers });
+  // Every way out, Done or Escape or the backdrop, goes through here: the
+  // dialog stays mounted, so without the reset it reopens on the last file.
+  function handleClose() {
+    if (step === "done") void queryClient.invalidateQueries({ queryKey: keys.speakers });
     reset();
     onClose();
   }
@@ -150,7 +152,7 @@ export default function SpeakerCsvImportDialog({ open, onClose }: SpeakerCsvImpo
   const handleKeyDown = useSubmitShortcut(
     () => {
       if (step === "preview" && !allInvalid) void handleImport();
-      else if (step === "done") handleDone();
+      else if (step === "done") handleClose();
     },
     step === "preview" || step === "done",
   );
@@ -159,7 +161,7 @@ export default function SpeakerCsvImportDialog({ open, onClose }: SpeakerCsvImpo
     <Dialog
       open={open}
       // No way out mid-import: closing would leave the loop running unseen.
-      onClose={step === "importing" ? undefined : onClose}
+      onClose={step === "importing" ? undefined : handleClose}
       maxWidth="md"
       fullWidth
       onKeyDown={handleKeyDown}
@@ -266,7 +268,7 @@ export default function SpeakerCsvImportDialog({ open, onClose }: SpeakerCsvImpo
       </DialogContent>
 
       <DialogActions>
-        {step === "idle" && <Button onClick={onClose}>Cancel</Button>}
+        {step === "idle" && <Button onClick={handleClose}>Cancel</Button>}
         {step === "preview" && (
           <>
             <Button onClick={reset}>Back</Button>
@@ -277,7 +279,7 @@ export default function SpeakerCsvImportDialog({ open, onClose }: SpeakerCsvImpo
         )}
         {step === "importing" && <Button disabled>Importing...</Button>}
         {step === "done" && (
-          <Button variant="contained" onClick={handleDone}>
+          <Button variant="contained" onClick={handleClose}>
             Done
           </Button>
         )}
@@ -291,5 +293,6 @@ function RowStatusChip({ row }: { row: ImportRow }) {
   if (row.progress === "error") return <Chip label="Error" color="error" size="small" />;
   if (row.status === "new") return <Chip label="New" color="success" size="small" />;
   if (row.status === "duplicate") return <Chip label="Duplicate" color="warning" size="small" />;
-  return <Chip label="Invalid" color="error" size="small" />;
+  // An invalid row with a name repeats an earlier row (see parseSpeakerCsv).
+  return <Chip label={row.parsed.name ? "Repeated" : "Invalid"} color="error" size="small" />;
 }
