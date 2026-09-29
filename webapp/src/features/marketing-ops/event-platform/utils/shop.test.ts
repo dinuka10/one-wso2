@@ -324,8 +324,8 @@ describe("orders", () => {
 
   it("bounds the date pickers by the orders", () => {
     expect(orderDateBounds([])).toEqual({});
-    const { min, max } = orderDateBounds(orders);
-    expect(min?.toISOString()).toBe("2026-09-29T09:00:00.000Z");
+    const { min, max } = orderDateBounds([...orders, order({ id: "ord-0004", createdOn: "2026-09-29T08:59:40Z" })]);
+    expect(min?.toISOString()).toBe("2026-09-29T08:59:00.000Z");
     expect(max?.toISOString()).toBe("2026-09-30T12:00:00.000Z");
   });
 

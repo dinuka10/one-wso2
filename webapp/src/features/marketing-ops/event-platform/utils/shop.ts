@@ -476,11 +476,16 @@ export function activeOrderFilterCount(f: OrderFilters): number {
   return (f.minAmount !== "" || f.maxAmount !== "" ? 1 : 0) + (f.from || f.to ? 1 : 0);
 }
 
-/** The earliest and latest order, to bound the date pickers. */
+/**
+ * The earliest and latest order, to bound the date pickers. The earliest is
+ * floored to its minute: the pickers choose whole minutes, and a bound at
+ * 09:00:20 would mark "from 09:00" invalid though it includes that order.
+ */
 export function orderDateBounds(orders: readonly Pick<ShopOrder, "createdOn">[]): { min?: Date; max?: Date } {
   const times = orders.map((o) => new Date(o.createdOn).getTime()).filter((t) => Number.isFinite(t));
   if (times.length === 0) return {};
-  return { min: new Date(Math.min(...times)), max: new Date(Math.max(...times)) };
+  const min = Math.min(...times);
+  return { min: new Date(min - (min % MINUTE_MS)), max: new Date(Math.max(...times)) };
 }
 
 export function lineTotal(item: Pick<ShopOrderItem, "quantity" | "priceAtPurchase">): number {
