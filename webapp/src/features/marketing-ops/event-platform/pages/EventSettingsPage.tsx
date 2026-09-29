@@ -15,6 +15,7 @@
 // under the License.
 
 import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import {
@@ -39,9 +40,13 @@ import ErrorNotice from "@components/error-notice/ErrorNotice";
 import { useNotifications } from "@context/notifications/NotificationsContext";
 import { useDeleteEvent, useEvent, useUpsertEvent } from "@features/marketing-ops/event-platform/api/event";
 import { useNotifyFailure } from "@features/marketing-ops/event-platform/api/base";
+import { eventPlatformKeys as keys } from "@features/marketing-ops/event-platform/api/queryKeys";
 import { useSubmitShortcut } from "@features/marketing-ops/event-platform/hooks/useSubmitShortcut";
 import { eventPlatformPath, topLevelTab } from "@features/marketing-ops/event-platform/eventPlatformTabs";
-import type { ConferenceConfig } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
+import type {
+  ConferenceConfig,
+  RoomMappings,
+} from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
 import {
   addDaysToDateOnly,
   formatDayLabel,
@@ -59,6 +64,7 @@ import {
   dayCountOptions,
   dayEndsBeforeStart,
   droppedDayCount,
+  isValidLogoUrl,
   resizeDays,
   toSettingsFormValues,
   toUpsertPayload,
@@ -87,6 +93,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 function SettingsForm({ event }: { event: ConferenceConfig }) {
   const upsertEvent = useUpsertEvent(event.id);
+  const qc = useQueryClient();
   const { showSuccess } = useNotifications();
   const notifyFailure = useNotifyFailure();
   const [confirm, setConfirm] = useState<ConfirmationContent | null>(null);
@@ -98,18 +105,24 @@ function SettingsForm({ event }: { event: ConferenceConfig }) {
   const labels = useFieldArray({ control, name: "artifactLabels" });
   const values = useWatch({ control }) as EventSettingsFormValues;
   const startDate = toDateOnlyString(values.startDate);
+  const logoInvalid = !isValidLogoUrl(values.defaultInternalLogoUrl ?? "");
 
   const canSubmit = !upsertEvent.isPending && canSaveSettings(values);
 
-  const save = (next: EventSettingsFormValues) =>
-    upsertEvent.mutate(toUpsertPayload(next, event), {
+  const save = (next: EventSettingsFormValues) => {
+    const dropsDays = droppedDayCount(event, next) > 0;
+    const mappings = qc.getQueryData<RoomMappings>(keys.roomMappings(event.id));
+    upsertEvent.mutate(toUpsertPayload(next, event, mappings), {
       onSuccess: (updated) => {
+        // Dropped days take their activity windows with them server side.
+        if (dropsDays) void qc.invalidateQueries({ queryKey: keys.activities(event.id) });
         // The saved event becomes the new baseline, so Cancel returns to it.
         reset(toSettingsFormValues(updated));
         showSuccess("Settings saved.");
       },
       onError: (err) => notifyFailure("Couldn't save the settings.", err),
     });
+  };
 
   const submit = handleSubmit((next) => {
     const dropped = droppedDayCount(event, next);
@@ -333,6 +346,8 @@ function SettingsForm({ event }: { event: ConferenceConfig }) {
             size="small"
             fullWidth
             placeholder="https://example.com/logo.png"
+            error={logoInvalid}
+            helperText={logoInvalid ? "Must be an http:// or https:// URL" : undefined}
             slotProps={{ htmlInput: { "aria-label": "Default internal speaker logo URL" } }}
             {...register("defaultInternalLogoUrl")}
           />
@@ -340,7 +355,7 @@ function SettingsForm({ event }: { event: ConferenceConfig }) {
 
         <Section
           title="Shop closing time"
-          hint="When the event shop locks and stops taking orders. Leave empty to keep it open."
+          hint={`When the event shop locks and stops taking orders, in the event's time zone (${values.timezone}). Leave empty to keep it open.`}
         >
           <Controller
             control={control}

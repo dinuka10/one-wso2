@@ -25,9 +25,12 @@ import {
   canSaveSettings,
   dayCountOptions,
   droppedDayCount,
+  instantToZonedWallClock,
+  isValidLogoUrl,
   resizeDays,
   toSettingsFormValues,
   toUpsertPayload,
+  zonedWallClockToInstant,
 } from "./eventSettingsForm";
 
 const day = (dayIndex: number, label: string | null = null): ConferenceDay => ({
@@ -72,12 +75,44 @@ describe("toSettingsFormValues", () => {
     ]);
     expect(values.artifactLabels).toEqual([{ value: "View Slides" }]);
     expect(values.venueAddress).toBe("");
-    expect(values.shopClosingTime?.toISOString()).toBe("2026-09-30T12:00:00.000Z");
+    // 12:00Z is 5:30 pm in Colombo, whatever zone the suite runs in.
+    expect(values.shopClosingTime).toEqual(new Date(2026, 8, 30, 17, 30));
     expect(values.timezone).toBe("Asia/Colombo");
   });
 
   it("falls back to the given zone when the event has none", () => {
     expect(toSettingsFormValues({ ...event, timezone: "" }, "Europe/London").timezone).toBe("Europe/London");
+  });
+});
+
+describe("shop closing time zone", () => {
+  it("shows and saves the time in the event's zone, not the browser's", () => {
+    const wall = new Date(2026, 8, 30, 18, 0);
+    expect(zonedWallClockToInstant(wall, "Asia/Colombo")?.toISOString()).toBe("2026-09-30T12:30:00.000Z");
+    expect(zonedWallClockToInstant(wall, "UTC")?.toISOString()).toBe("2026-09-30T18:00:00.000Z");
+    expect(instantToZonedWallClock(new Date("2026-09-30T12:30:00Z"), "Asia/Colombo")).toEqual(wall);
+  });
+
+  it("takes the offset in force on the day, across a DST change", () => {
+    // New York is UTC-4 in summer and UTC-5 after the first Sunday of November.
+    expect(zonedWallClockToInstant(new Date(2026, 6, 1, 18, 0), "America/New_York")?.toISOString()).toBe(
+      "2026-07-01T22:00:00.000Z",
+    );
+    expect(zonedWallClockToInstant(new Date(2026, 11, 1, 18, 0), "America/New_York")?.toISOString()).toBe(
+      "2026-12-01T23:00:00.000Z",
+    );
+  });
+
+  it("keeps the time shown, not the instant, when the zone is changed", () => {
+    const values = { ...toSettingsFormValues(event, "UTC"), timezone: "UTC" };
+    expect(toUpsertPayload(values, event).shopClosingTime).toBe("2026-09-30T17:30:00.000Z");
+  });
+
+  it("passes empty and unknown zones through", () => {
+    expect(instantToZonedWallClock(null, "Asia/Colombo")).toBeNull();
+    expect(zonedWallClockToInstant(null, "Asia/Colombo")).toBeNull();
+    const instant = new Date("2026-09-30T12:30:00Z");
+    expect(instantToZonedWallClock(instant, "Not/AZone")).toEqual(instant);
   });
 });
 
@@ -106,6 +141,14 @@ describe("toUpsertPayload", () => {
   it("passes the keynote room through, null when unset", () => {
     const values = toSettingsFormValues(event, "UTC");
     expect(toUpsertPayload(values, { ...event, keynoteRoomId: undefined }).keynoteRoomId).toBeNull();
+  });
+
+  it("sends the keynote room from the room mappings over the event's, including a cleared one", () => {
+    const values = toSettingsFormValues(event, "UTC");
+    expect(toUpsertPayload(values, event, { configId: "evt-7", keynoteRoomId: "room-2" }).keynoteRoomId).toBe(
+      "room-2",
+    );
+    expect(toUpsertPayload(values, event, { configId: "evt-7", keynoteRoomId: null }).keynoteRoomId).toBeNull();
   });
 
   it("trims text and turns blanks into null", () => {
@@ -167,5 +210,22 @@ describe("canSaveSettings", () => {
     expect(canSaveSettings({ ...values, startDate: new Date(Number.NaN) })).toBe(false);
     expect(canSaveSettings({ ...values, days: [{ startMinute: 600, endMinute: 600, label: "" }] })).toBe(false);
     expect(canSaveSettings({ ...values, artifactLabels: [{ value: "  " }] })).toBe(false);
+  });
+
+  it("refuses a default logo that isn't an http(s) URL", () => {
+    expect(canSaveSettings({ ...values, defaultInternalLogoUrl: "https://example.com/logo.png" })).toBe(true);
+    expect(canSaveSettings({ ...values, defaultInternalLogoUrl: "logo.png" })).toBe(false);
+    expect(canSaveSettings({ ...values, defaultInternalLogoUrl: "javascript:alert(1)" })).toBe(false);
+  });
+});
+
+describe("isValidLogoUrl", () => {
+  it("accepts blank and http(s) URLs only", () => {
+    expect(isValidLogoUrl("")).toBe(true);
+    expect(isValidLogoUrl("  ")).toBe(true);
+    expect(isValidLogoUrl("http://example.com/logo.png")).toBe(true);
+    expect(isValidLogoUrl(" https://example.com/logo.png ")).toBe(true);
+    expect(isValidLogoUrl("data:image/png;base64,AAAA")).toBe(false);
+    expect(isValidLogoUrl("example.com/logo.png")).toBe(false);
   });
 });
