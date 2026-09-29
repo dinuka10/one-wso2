@@ -127,7 +127,14 @@ describe("rich text", () => {
       '<p><a href="javascript:alert(1)">bad</a> <a href="https://example.com">good</a></p>',
     );
     expect(html).not.toContain("javascript:");
-    expect(html).toContain('<a target="_blank" rel="noopener noreferrer" href="https://example.com">good</a>');
+    // Read the link back rather than match a string: attribute order is the
+    // sanitiser's business.
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    const good = [...tpl.content.querySelectorAll("a")].find((a) => a.textContent === "good");
+    expect(good?.getAttribute("href")).toBe("https://example.com");
+    expect(good?.getAttribute("target")).toBe("_blank");
+    expect(good?.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
   it("drops every class, so Bootstrap utilities can't restyle the public page", () => {

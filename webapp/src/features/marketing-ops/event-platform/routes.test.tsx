@@ -66,6 +66,10 @@ vi.mock("./pages/ActivitiesPage", async () => {
   const { default: ComingSoon } = await import("./components/ComingSoon");
   return { default: () => <ComingSoon screen="Activities" phase={4} /> };
 });
+vi.mock("./pages/EventExportPage", async () => {
+  const { default: ComingSoon } = await import("./components/ComingSoon");
+  return { default: () => <ComingSoon screen="Export" phase={7} /> };
+});
 
 // The finished agenda editor needs a QueryClient and a sign-in; these tests are
 // about which leaf a URL reaches, so it renders as the placeholder it replaced.
