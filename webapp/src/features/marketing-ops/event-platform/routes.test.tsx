@@ -58,6 +58,14 @@ vi.mock("./pages/EventSpeakersPage", async () => {
   const { default: ComingSoon } = await import("./components/ComingSoon");
   return { default: () => <ComingSoon screen="Speakers" phase={3} /> };
 });
+vi.mock("./pages/RoomsPage", async () => {
+  const { default: ComingSoon } = await import("./components/ComingSoon");
+  return { default: () => <ComingSoon screen="Rooms" phase={4} /> };
+});
+vi.mock("./pages/ActivitiesPage", async () => {
+  const { default: ComingSoon } = await import("./components/ComingSoon");
+  return { default: () => <ComingSoon screen="Activities" phase={4} /> };
+});
 
 const gate = vi.hoisted(() => ({ value: {} as MarketingOpsGate }));
 vi.mock("@features/marketing-ops/api/useMarketingOpsGate", () => ({
