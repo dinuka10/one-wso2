@@ -74,6 +74,17 @@ vi.mock("./pages/SessionEditorPage", async () => {
   return { default: () => <ComingSoon screen="Agenda" phase={5} /> };
 });
 
+// The shop screens need a QueryClient and a sign-in too; only the route each
+// shop URL reaches is under test.
+vi.mock("./pages/ShopInventoryPage", async () => {
+  const { default: ComingSoon } = await import("./components/ComingSoon");
+  return { default: () => <ComingSoon screen="Shop inventory" phase={6} /> };
+});
+vi.mock("./pages/ShopOrdersPage", async () => {
+  const { default: ComingSoon } = await import("./components/ComingSoon");
+  return { default: () => <ComingSoon screen="Shop orders" phase={6} /> };
+});
+
 const gate = vi.hoisted(() => ({ value: {} as MarketingOpsGate }));
 vi.mock("@features/marketing-ops/api/useMarketingOpsGate", () => ({
   useMarketingOpsGate: () => gate.value,
