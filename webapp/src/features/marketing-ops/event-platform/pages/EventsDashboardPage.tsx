@@ -173,7 +173,12 @@ function CreateEventDialog({ open, onClose }: { open: boolean; onClose: () => vo
     else void handleCreate();
   }
 
-  const handleKeyDown = useSubmitShortcut(() => void handleCreate(), canCreate && !createEvent.isPending);
+  // Through handleCreateClick, like the button, so the live-shop warning still
+  // shows; and off while it is open, so a second press can't confirm it.
+  const handleKeyDown = useSubmitShortcut(
+    handleCreateClick,
+    canCreate && !createEvent.isPending && !showWarning,
+  );
 
   return (
     <>
