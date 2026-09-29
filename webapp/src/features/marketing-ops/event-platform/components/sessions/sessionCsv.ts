@@ -53,6 +53,26 @@ export interface ParsedSessionCsv {
   unmatched: string[];
 }
 
+const escapeHtml = (text: string): string =>
+  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// A CSV cell is plain text, but titles and descriptions are stored as the
+// rich-text editor's HTML and read back through the sanitiser, which would
+// take any "<" in them for markup. These escape it, and keep line breaks the
+// way each field's editor writes them: <br> in an inline title, one <p> per
+// line in a description.
+export function textToInlineHtml(text: string): string {
+  return escapeHtml(text).replace(/\r?\n/g, "<br>");
+}
+
+export function textToBlockHtml(text: string): string {
+  if (!text) return "";
+  return text
+    .split(/\r?\n/)
+    .map((line) => `<p>${escapeHtml(line) || "<br>"}</p>`)
+    .join("");
+}
+
 /** Parses the file's text. No rows when there is no header plus at least one data row. */
 export function parseSessionCsv(text: string, speakers: readonly Speaker[]): ParsedSessionCsv {
   const { data } = Papa.parse<string[]>(text, { skipEmptyLines: "greedy" });

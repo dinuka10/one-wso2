@@ -43,11 +43,19 @@ import {
 import { useSubmitShortcut } from "@features/marketing-ops/event-platform/hooks/useSubmitShortcut";
 import type {
   ConferenceDay,
+  Session,
   TrackSection,
 } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
 import { SLOT_MINUTES, slotToMinute } from "@features/marketing-ops/event-platform/utils/agenda";
 import { isValidDate, minuteToTime } from "@features/marketing-ops/event-platform/utils/dateTime";
-import { overlapsSibling, sectionSpan, slugify, suggestTopicId } from "./trackSectionForm";
+import {
+  isSpanInDay,
+  overlapsSibling,
+  sectionSpan,
+  slugify,
+  strandedSessions,
+  suggestTopicId,
+} from "./trackSectionForm";
 
 const { TimePicker } = DatePickers;
 
@@ -73,8 +81,9 @@ export interface TrackSectionDialogInput {
 }
 
 // Adds or edits a track section (trackId set) or a keynote section (trackId
-// null). Times snap to 15 minutes, and a span that overlaps a sibling can't be
-// saved.
+// null). Times snap to 15 minutes, and a span that overlaps a sibling or runs
+// off the day can't be saved. An edit that would leave sessions outside the
+// section says so.
 export default function TrackSectionDialog({
   title,
   activeDay,
@@ -82,6 +91,7 @@ export default function TrackSectionDialog({
   configId,
   existingSections,
   initialSection,
+  sectionSessions = [],
   isPending,
   onConfirm,
   onCancel,
@@ -92,6 +102,8 @@ export default function TrackSectionDialog({
   configId: string;
   existingSections: TrackSection[];
   initialSection?: TrackSection;
+  // The sessions already in the section being edited.
+  sectionSessions?: Session[];
   isPending?: boolean;
   onConfirm: (input: TrackSectionDialogInput) => void;
   onCancel: () => void;
@@ -132,6 +144,8 @@ export default function TrackSectionDialog({
   const span = sectionSpan(activeDay, startTime, endTime);
   const { startSlot, endSlot, durationSlots } = span;
   const hasOverlap = overlapsSibling(span, existingSections, initialSection?.id);
+  const inDay = isSpanInDay(span, activeDay);
+  const stranded = strandedSessions(span, sectionSessions).length;
 
   const canSubmit =
     !!label.trim() &&
@@ -139,6 +153,7 @@ export default function TrackSectionDialog({
     endSlot !== null &&
     durationSlots > 0 &&
     !hasOverlap &&
+    inDay &&
     !isPending;
 
   const submit = handleSubmit((values) => {
@@ -313,6 +328,17 @@ export default function TrackSectionDialog({
           {hasOverlap && (
             <Typography variant="caption" color="error">
               Overlaps with an existing section
+            </Typography>
+          )}
+          {!inDay && (
+            <Typography variant="caption" color="error">
+              Must fall within the day&apos;s hours
+            </Typography>
+          )}
+          {stranded > 0 && (
+            <Typography variant="caption" color="warning.main">
+              {stranded} session{stranded === 1 ? "" : "s"} would fall outside this section and be
+              hidden. Move {stranded === 1 ? "it" : "them"} first.
             </Typography>
           )}
         </DialogContent>

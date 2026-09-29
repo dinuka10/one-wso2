@@ -24,9 +24,16 @@ import {
   UNPLACED,
   type Placement,
 } from "@features/marketing-ops/event-platform/api/cacheUpdates";
+import {
+  clampStartSlot,
+  resolveDrop,
+  splitSessions,
+  type DropOutcome,
+} from "@features/marketing-ops/event-platform/hooks/agendaPlacement";
 import type {
   ConferenceDay,
   Session,
+  TrackSection,
 } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
 import {
   SLOT_MINUTES,
@@ -97,9 +104,32 @@ export function itemFormDefaults(
   };
 }
 
-/** A title is required; the editor emits "" for an empty one. */
-export function isItemFormValid(form: Pick<ItemFormValues, "title">): boolean {
-  return form.title.trim().length > 0;
+// Links are opened from the board, the preview and the public agenda, so only
+// http(s) ones are kept; anything else is refused on save and not rendered.
+export function isHttpUrl(value: string): boolean {
+  return /^https?:\/\/\S+$/i.test(value.trim());
+}
+
+/** Whether a link field is blank or an http(s) URL. */
+export const isLinkValid = (value: string): boolean => !value.trim() || isHttpUrl(value);
+
+/** False only when both times are set and the end is not after the start. */
+export function endsAfterStart(form: Pick<ItemFormValues, "startTime" | "endTime">): boolean {
+  if (!form.startTime || !form.endTime) return true;
+  return timeToMinute(form.endTime) > timeToMinute(form.startTime);
+}
+
+// A title is required (the editor emits "" for an empty one), the end must
+// come after the start, and a link must be http(s).
+export function isItemFormValid(
+  form: Pick<ItemFormValues, "title" | "startTime" | "endTime" | "articleUrl" | "videoUrl">,
+): boolean {
+  return (
+    form.title.trim().length > 0 &&
+    endsAfterStart(form) &&
+    isLinkValid(form.articleUrl) &&
+    isLinkValid(form.videoUrl)
+  );
 }
 
 // Every editable field, always: the PATCH is not partial (the backend requires
@@ -113,78 +143,139 @@ export function sessionFieldsOf(form: ItemFormValues, durationSlots: number): Se
     durationSlots,
     speakerAssignments: form.speakerAssignments,
     roomId: form.roomId || null,
-    articleUrl: form.articleUrl || null,
+    articleUrl: form.articleUrl.trim() || null,
     articleLabel: form.articleLabel || null,
-    videoUrl: form.videoUrl || null,
+    videoUrl: form.videoUrl.trim() || null,
     videoLabel: form.videoLabel || null,
     topicId: form.topicId,
     topicIsManual: form.topicIsManual,
   };
 }
 
-/** Slots between the two times, at least one; the default when either is blank. */
-export function durationSlotsOf(form: Pick<ItemFormValues, "startTime" | "endTime">): number {
-  if (!form.startTime || !form.endTime) return DEFAULT_DURATION_SLOTS;
+// Slots between the two times, at least one. When either is blank the item
+// keeps `fallback`: its own length on an edit (an unscheduled item opens with
+// both pickers blank), half an hour for a new one.
+export function durationSlotsOf(
+  form: Pick<ItemFormValues, "startTime" | "endTime">,
+  fallback: number = DEFAULT_DURATION_SLOTS,
+): number {
+  if (!form.startTime || !form.endTime) return fallback;
   const minutes = timeToMinute(form.endTime) - timeToMinute(form.startTime);
   return Math.max(1, Math.round(minutes / SLOT_MINUTES));
 }
 
-// The start slot a form time maps to on `day`, pulled back so an item of
-// `durationSlots` still ends inside the day.
-function clampedStartSlot(startTime: Date, day: ConferenceDay, durationSlots: number): number {
-  const daySlotCount = slotCountOf(day);
-  const rawSlot = minuteToSlot(timeToMinute(startTime), day.startMinute);
-  const len = Math.min(durationSlots, daySlotCount);
-  return Math.max(0, Math.min(rawSlot, daySlotCount - len));
+const IGNORED: DropOutcome = { kind: "ignored" };
+
+// Sends a form placement through the same overlap check a drop gets, against
+// the target day's board as it is now.
+function checkPlacement(
+  item: Pick<Session, "id" | "kind" | "durationSlots">,
+  target: Placement & { dayId: string; slotIndex: number },
+  day: ConferenceDay,
+  sessions: readonly Session[],
+): DropOutcome {
+  return resolveDrop({
+    session: item,
+    placed: splitSessions(sessions, target.dayId).placed,
+    dayId: target.dayId,
+    slotCount: slotCountOf(day),
+    trackId: target.trackId,
+    rawSlot: target.slotIndex,
+    sectionId: target.sectionId,
+  });
 }
 
-// Where a full-width item (keynote, break, activity) goes straight from the
-// form: they need no track, so a day and a start time are enough to place
-// them. A regular session is only ever placed by dropping it into a section,
-// so the form never places one.
+const formSlot = (form: Pick<ItemFormValues, "startTime">, day: ConferenceDay): number | null =>
+  form.startTime ? minuteToSlot(timeToMinute(form.startTime), day.startMinute) : null;
+
+// Where a new item lands. A full-width item (keynote, break, activity) needs
+// no track, so a day and a start time place it, if nothing is there already.
+// A regular session is only ever placed by dropping it into a section, so a
+// new one is always created unscheduled ("ignored").
 export function formPlacement(
   form: Pick<ItemFormValues, "kind" | "dayId" | "startTime">,
   days: readonly ConferenceDay[],
   durationSlots: number,
-): { dayId: string; trackId: null; slotIndex: number } | null {
-  const targetDay = days.find((d) => d.id === form.dayId);
-  if (!targetDay || !form.startTime) return null;
-  if (!isFullWidthKind(form.kind)) return null;
-  return {
-    dayId: targetDay.id,
-    trackId: null,
-    slotIndex: clampedStartSlot(form.startTime, targetDay, durationSlots),
-  };
+  sessions: readonly Session[],
+): DropOutcome {
+  const day = days.find((d) => d.id === form.dayId);
+  const slot = day ? formSlot(form, day) : null;
+  if (!day || slot === null || !isFullWidthKind(form.kind)) return IGNORED;
+  return checkPlacement(
+    { id: "", kind: form.kind, durationSlots },
+    { dayId: day.id, trackId: null, slotIndex: slot, sectionId: null },
+    day,
+    sessions,
+  );
 }
 
-// The placement PUT an edit sends alongside its PATCH, or null for none.
+// What an edit does to the item's placement: "ignored" leaves it where it is,
+// "overlap" refuses the save, "place" sends that placement (UNPLACED included).
 //
-// - A full-width item follows the form: placed where its day and time say,
-//   or unscheduled when either is blank. It keeps its section (a keynote in a
-//   keynote section).
-// - A session already inside a section can still be moved within it from the
-//   form, by its start time. Its day, track and section stay as they are; the
-//   form's day only supplies the slot grid, as in the source.
-// - Anything else is left where it is.
+// - An item in a section stays in it while the form keeps it on the same day,
+//   and its start time is pulled inside the section, as a drop is. A
+//   full-width item leaves the section instead when its start falls outside
+//   it, or its time is cleared; a regular session keeps its slot then.
+// - A full-width item outside a section follows the form: placed where its
+//   day and time say, or unscheduled when either is blank.
+// - A regular session can only be on the board inside a section, so moving
+//   it to another day, or turning a free full-width item into one, sends it
+//   back to Unscheduled.
+//
+// `sections` are those of the item's current day: its section is looked up
+// there, and one that can't be found leaves the item alone rather than guess.
 export function editPlacement(
   existing: Session | undefined,
   form: Pick<ItemFormValues, "kind" | "dayId" | "startTime">,
   days: readonly ConferenceDay[],
   durationSlots: number,
-): Placement | null {
-  if (isFullWidthKind(form.kind)) {
-    const placement = formPlacement(form, days, durationSlots);
-    return placement ? { ...placement, sectionId: existing?.sectionId ?? null } : UNPLACED;
+  board: { sessions: readonly Session[]; sections: readonly TrackSection[] },
+): DropOutcome {
+  if (!existing) return IGNORED;
+  const fullWidth = isFullWidthKind(form.kind);
+  const day = days.find((d) => d.id === form.dayId);
+  const slot = day ? formSlot(form, day) : null;
+  const unplace: DropOutcome = { kind: "place", placement: UNPLACED };
+
+  let target: (Placement & { dayId: string; slotIndex: number }) | null = null;
+  const staysOnDay = existing.dayId !== null && existing.dayId === form.dayId;
+  if (staysOnDay && existing.sectionId) {
+    const section = board.sections.find((s) => s.id === existing.sectionId);
+    if (!section || !day) return IGNORED;
+    const sectionEnd = section.startSlot + section.durationSlots;
+    const inSection = slot !== null && slot >= section.startSlot && slot < sectionEnd;
+    if (!fullWidth || inSection) {
+      const len = Math.min(durationSlots, section.durationSlots);
+      const wanted = slot ?? existing.slotIndex ?? section.startSlot;
+      target = {
+        dayId: day.id,
+        trackId: section.trackId,
+        slotIndex: Math.max(section.startSlot, Math.min(wanted, sectionEnd - len)),
+        sectionId: section.id,
+      };
+    }
   }
-  if (existing?.sectionId && existing.trackId && existing.dayId && form.startTime && form.dayId) {
-    const targetDay = days.find((d) => d.id === form.dayId);
-    if (!targetDay) return null;
-    return {
-      dayId: existing.dayId,
-      trackId: existing.trackId,
-      slotIndex: clampedStartSlot(form.startTime, targetDay, durationSlots),
-      sectionId: existing.sectionId,
+  if (!target) {
+    if (!fullWidth) return existing.dayId !== null ? unplace : IGNORED;
+    if (!day || slot === null) return existing.dayId !== null ? unplace : IGNORED;
+    const len = Math.min(durationSlots, slotCountOf(day));
+    target = {
+      dayId: day.id,
+      trackId: null,
+      slotIndex: clampStartSlot(slot, len, slotCountOf(day)),
+      sectionId: null,
     };
   }
-  return null;
+
+  // Nothing moved, grew or widened: no PUT, and no overlap check that could
+  // refuse a title fix on an item that already sits where it is.
+  const unchanged =
+    fullWidth === isFullWidthKind(existing.kind) &&
+    target.dayId === existing.dayId &&
+    target.trackId === existing.trackId &&
+    target.slotIndex === existing.slotIndex &&
+    target.sectionId === existing.sectionId;
+  if (!day || (unchanged && durationSlots <= existing.durationSlots)) return IGNORED;
+
+  return checkPlacement({ id: existing.id, kind: form.kind, durationSlots }, target, day, board.sessions);
 }

@@ -104,8 +104,8 @@ interface AgendaBoardProps {
   videoLinksEnabled: boolean;
   wasDragging: RefObject<boolean>;
   footnotes: TimeslotFootnote[];
-  onAddFootnote: (slotIndex: number, text: string) => void;
-  onEditFootnote: (id: string, text: string) => void;
+  onAddFootnote: (slotIndex: number, text: string, onSuccess: () => void) => void;
+  onEditFootnote: (id: string, text: string, onSuccess: () => void) => void;
   onDeleteFootnote: (id: string) => void;
   footnotesPending: boolean;
 }

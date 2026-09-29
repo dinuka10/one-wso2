@@ -115,18 +115,35 @@ export interface ModalData {
   placed: readonly Session[];
 }
 
+// The sections a new or edited section must not overlap. A keynote section is
+// drawn across every track, so it clashes with any section of the day, and a
+// track section with its own track's sections and with every keynote section.
+export function sectionSiblings(
+  kind: SectionKind,
+  trackId: string | null,
+  sections: readonly TrackSection[],
+  keynoteSections: readonly TrackSection[],
+): TrackSection[] {
+  return kind === "keynote"
+    ? [...keynoteSections, ...sections]
+    : [...sections.filter((s) => s.trackId === trackId), ...keynoteSections];
+}
+
 export interface ModalTargets {
   editItem?: Session;
   editTrack?: Track;
   deleteTrack?: Track;
-  // The scheduled sessions a track delete sends back to the palette, for the
-  // confirmation's wording.
+  // The scheduled items a track delete sends back to the palette, for the
+  // confirmation's wording: every item carrying the track's id, as the delete
+  // unplaces them.
   deleteTrackCount: number;
   deleteSession?: Session;
   editSection?: TrackSection;
-  // The sections an edited one must not overlap: its siblings in the same
-  // track, or the day's other keynote sections.
+  // The sections an edited one must not overlap (sectionSiblings).
   editSectionSiblings: TrackSection[];
+  // The placed sessions inside the edited section, which a shrink or move
+  // could leave outside it.
+  editSectionSessions: Session[];
   deleteSection?: TrackSection;
   deleteSectionSessions: Session[];
   previewSession?: Session;
@@ -151,17 +168,14 @@ export function modalTargets(state: EditorModalsState, data: ModalData): ModalTa
       modal?.kind === "delete-track" ? data.tracks.find((t) => t.id === modal.trackId) : undefined,
     deleteTrackCount:
       modal?.kind === "delete-track"
-        ? data.sessions.filter(
-            (s) => s.kind === "session" && s.trackId === modal.trackId && s.slotIndex !== null,
-          ).length
+        ? data.sessions.filter((s) => s.trackId === modal.trackId && s.slotIndex !== null).length
         : 0,
     deleteSession: modal?.kind === "delete-session" ? sessionById(modal.sessionId) : undefined,
     editSection,
     editSectionSiblings: editSection
-      ? editSection.kind === "keynote"
-        ? [...data.keynoteSections]
-        : data.sections.filter((s) => s.trackId === editSection.trackId)
+      ? sectionSiblings(editSection.kind, editSection.trackId, data.sections, data.keynoteSections)
       : [],
+    editSectionSessions: editSection ? data.placed.filter((s) => s.sectionId === editSection.id) : [],
     deleteSection,
     deleteSectionSessions: deleteSection
       ? data.placed.filter((s) => s.sectionId === deleteSection.id)

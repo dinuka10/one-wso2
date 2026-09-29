@@ -35,6 +35,7 @@ import type {
   Session,
   SessionArtifact,
 } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
+import { isLinkValid } from "./itemForm";
 
 interface Props {
   open: boolean;
@@ -48,7 +49,8 @@ interface Props {
 
 // Edits a session's artifact links (slides, recording, …). Rows are read from
 // the session once, on mount — the caller keys this on the session id. A row
-// without a URL is dropped on save rather than refused.
+// without a URL is dropped on save rather than refused; one whose URL isn't
+// http(s) blocks the save.
 export default function ArtifactEditDialog({
   open,
   session,
@@ -64,13 +66,17 @@ export default function ArtifactEditDialog({
   const updateRow = (idx: number, field: keyof SessionArtifact, value: string) =>
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
 
+  const allLinksValid = rows.every((r) => isLinkValid(r.url));
+  const canSave = !isPending && artifactLabels.length > 0 && allLinksValid;
+
   const handleSave = () => {
+    if (!canSave) return;
     onSave(
       rows.filter((r) => r.label && r.url.trim()).map((r) => ({ label: r.label, url: r.url.trim() })),
     );
   };
 
-  const handleKeyDown = useSubmitShortcut(handleSave, !isPending && artifactLabels.length > 0);
+  const handleKeyDown = useSubmitShortcut(handleSave, canSave);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth onKeyDown={handleKeyDown}>
@@ -114,6 +120,8 @@ export default function ArtifactEditDialog({
                   placeholder="https://"
                   type="url"
                   fullWidth
+                  error={!isLinkValid(row.url)}
+                  helperText={isLinkValid(row.url) ? undefined : "Must start with http:// or https://"}
                   slotProps={{ htmlInput: { "aria-label": "Artifact URL" } }}
                 />
                 <IconButton size="small" onClick={() => removeRow(idx)} aria-label="Remove artifact">
@@ -141,7 +149,7 @@ export default function ArtifactEditDialog({
           variant="contained"
           disableElevation
           onClick={handleSave}
-          disabled={isPending || artifactLabels.length === 0}
+          disabled={!canSave}
         >
           {isPending ? <CircularProgress size={16} /> : "Save"}
         </Button>

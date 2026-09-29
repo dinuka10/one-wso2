@@ -27,6 +27,7 @@ import {
   cardTimeLabel,
   itemColorHex,
 } from "@features/marketing-ops/event-platform/utils/agenda";
+import { isHttpUrl } from "./itemForm";
 
 interface Props {
   session: Session | undefined;
@@ -155,13 +156,13 @@ export default function SessionPreviewDrawer({ session, activeDay, onClose, onEd
                     <Typography variant="body2" sx={{ fontWeight: 500, minWidth: 0 }} noWrap>
                       {artifact.label}
                     </Typography>
+                    {/* Only an http(s) URL is a link; anything else shows as text. */}
                     <Typography
-                      component="a"
-                      href={artifact.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      {...(isHttpUrl(artifact.url)
+                        ? { component: "a", href: artifact.url, target: "_blank", rel: "noopener noreferrer" }
+                        : { component: "span" })}
                       variant="caption"
-                      color="primary.main"
+                      color={isHttpUrl(artifact.url) ? "primary.main" : "text.secondary"}
                       sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
                     >
                       {artifact.url}

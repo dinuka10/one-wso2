@@ -22,6 +22,7 @@
 // its sessions) lives in the api/ hooks; this hook only decides what to send.
 
 import { useState } from "react";
+import { useNotifications } from "@context/notifications/NotificationsContext";
 import { useEvent } from "@features/marketing-ops/event-platform/api/event";
 import {
   useCreateSession,
@@ -51,7 +52,7 @@ import {
   useListFootnotes,
   useUpdateFootnote,
 } from "@features/marketing-ops/event-platform/api/footnotes";
-import { UNPLACED } from "@features/marketing-ops/event-platform/api/cacheUpdates";
+import { UNPLACED, type Placement } from "@features/marketing-ops/event-platform/api/cacheUpdates";
 import { useNotifyFailure } from "@features/marketing-ops/event-platform/api/base";
 import type { SessionArtifact } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
 import { slotCountOf } from "@features/marketing-ops/event-platform/utils/agenda";
@@ -66,6 +67,8 @@ import {
   resolveDrop,
   splitSessions,
 } from "@features/marketing-ops/event-platform/hooks/agendaPlacement";
+
+const FORM_OVERLAP_WARNING = "Sessions overlap — pick another time, or move the other item first.";
 
 export function useAgendaEditor(eventId: string) {
   const {
@@ -82,6 +85,7 @@ export function useAgendaEditor(eventId: string) {
   const [activeId, setActiveId] = useState<string>("");
 
   const notifyFailure = useNotifyFailure();
+  const { showWarning } = useNotifications();
   const createSession = useCreateSession();
   const updateSession = useUpdateSession();
   const updateArtifacts = useUpdateArtifacts();
@@ -134,16 +138,25 @@ export function useAgendaEditor(eventId: string) {
 
   // The create and update hooks raise no toast of their own (the source left
   // failures to a global 403-only handler), so the dialog's save says why it
-  // stayed open.
+  // stayed open. A form placement gets the overlap check a drop does; one
+  // that clashes keeps the dialog open.
   const handleAddItem = (form: ItemFormValues, onSuccess: () => void) => {
     if (!event) return;
     const durationSlots = durationSlotsOf(form);
-    const placement = formPlacement(form, days, durationSlots);
+    const outcome = formPlacement(form, days, durationSlots, sessions);
+    if (outcome.kind === "overlap") {
+      showWarning(FORM_OVERLAP_WARNING);
+      return;
+    }
+    const placement: Omit<Placement, "sectionId"> =
+      outcome.kind === "place" ? outcome.placement : { dayId: null, trackId: null, slotIndex: null };
     createSession.mutate(
       {
         configId: event.id,
         ...sessionFieldsOf(form, durationSlots),
-        ...(placement ?? { dayId: null, trackId: null, slotIndex: null }),
+        dayId: placement.dayId,
+        trackId: placement.trackId,
+        slotIndex: placement.slotIndex,
       },
       {
         onSuccess,
@@ -152,20 +165,31 @@ export function useAgendaEditor(eventId: string) {
     );
   };
 
-  // The PATCH and the placement PUT go out together, as in the source: the
-  // PUT is optimistic and reverts on its own if it fails.
+  // The placement PUT follows the PATCH rather than racing it: the PATCH's
+  // answer carries the placement as it was, and landing after the PUT it
+  // would put the card back where it came from. The PUT is optimistic and
+  // reverts on its own if it fails.
   const handleEditItem = (itemId: string, form: ItemFormValues, onSuccess: () => void) => {
-    const durationSlots = durationSlotsOf(form);
+    const existing = sessions.find((s) => s.id === itemId);
+    const durationSlots = durationSlotsOf(form, existing?.durationSlots);
+    const outcome = editPlacement(existing, form, days, durationSlots, {
+      sessions,
+      sections: [...sections, ...keynoteSections],
+    });
+    if (outcome.kind === "overlap") {
+      showWarning(FORM_OVERLAP_WARNING);
+      return;
+    }
     updateSession.mutate(
       { id: itemId, ...sessionFieldsOf(form, durationSlots) },
       {
-        onSuccess,
+        onSuccess: () => {
+          if (outcome.kind === "place") updatePlacement.mutate({ id: itemId, ...outcome.placement });
+          onSuccess();
+        },
         onError: (err) => notifyFailure("Couldn't save the item.", err),
       },
     );
-    const existing = sessions.find((s) => s.id === itemId);
-    const placement = editPlacement(existing, form, days, durationSlots);
-    if (placement) updatePlacement.mutate({ id: itemId, ...placement });
   };
 
   const handleDeleteTrack = (trackId: string) => {
@@ -183,14 +207,16 @@ export function useAgendaEditor(eventId: string) {
     );
   };
 
-  const addFootnote = (slotIndex: number, text: string) => {
+  // The footnote dialog closes on success only, so a failed save keeps what
+  // was typed; the hooks raise their own failure toast.
+  const addFootnote = (slotIndex: number, text: string, onSuccess: () => void) => {
     if (!activeDay) return;
-    createFootnote.mutate({ slotIndex, text });
+    createFootnote.mutate({ slotIndex, text }, { onSuccess });
   };
 
-  const editFootnote = (id: string, text: string) => {
+  const editFootnote = (id: string, text: string, onSuccess: () => void) => {
     if (!activeDay) return;
-    updateFootnote.mutate({ id, text });
+    updateFootnote.mutate({ id, text }, { onSuccess });
   };
 
   const removeFootnote = (id: string) => {

@@ -37,7 +37,13 @@ import { useCreateSession } from "@features/marketing-ops/event-platform/api/ses
 import { useListSpeakers } from "@features/marketing-ops/event-platform/api/speakers";
 import { useSubmitShortcut } from "@features/marketing-ops/event-platform/hooks/useSubmitShortcut";
 import type { Speaker } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
-import { SESSION_CSV_COLUMNS, parseSessionCsv, type ParsedSessionRow } from "./sessionCsv";
+import {
+  SESSION_CSV_COLUMNS,
+  parseSessionCsv,
+  textToBlockHtml,
+  textToInlineHtml,
+  type ParsedSessionRow,
+} from "./sessionCsv";
 
 interface Props {
   configId: string;
@@ -186,7 +192,16 @@ function Importing({ state, onDone }: { state: ImportState; onDone: () => void }
   );
 }
 
-function Content({ configId, onClose }: { configId: string; onClose: () => void }) {
+function Content({
+  configId,
+  onClose,
+  onLockChange,
+}: {
+  configId: string;
+  onClose: () => void;
+  // True while rows are being created, so the dialog can't be dismissed.
+  onLockChange: (locked: boolean) => void;
+}) {
   const { data: speakers = [] } = useListSpeakers();
   const createSession = useCreateSession();
   const qc = useQueryClient();
@@ -210,6 +225,7 @@ function Content({ configId, onClose }: { configId: string; onClose: () => void 
     const valid = rows.filter((r) => r.valid);
     setImportState({ done: 0, total: valid.length, failed: 0 });
     setStep("importing");
+    onLockChange(true);
 
     let failed = 0;
     for (let i = 0; i < valid.length; i++) {
@@ -218,8 +234,9 @@ function Content({ configId, onClose }: { configId: string; onClose: () => void 
         await createSession.mutateAsync({
           configId,
           kind: row.kind,
-          title: row.title,
-          description: row.description,
+          // Titles and descriptions are stored as rich text; the CSV's are plain.
+          title: textToInlineHtml(row.title),
+          description: textToBlockHtml(row.description),
           durationSlots: row.durationSlots,
           speakerAssignments: row.matchedSpeakerIds.map((speakerId) => ({ speakerId, role: "external" })),
           dayId: null,
@@ -231,6 +248,7 @@ function Content({ configId, onClose }: { configId: string; onClose: () => void 
       }
       setImportState({ done: i + 1, total: valid.length, failed });
     }
+    onLockChange(false);
   };
 
   const handleDone = () => {
@@ -272,11 +290,14 @@ function Content({ configId, onClose }: { configId: string; onClose: () => void 
 }
 
 // Imports unscheduled sessions from a CSV: pick a file, preview what would be
-// created, then create them one by one.
+// created, then create them one by one. Backdrop and Escape do nothing while
+// the rows go in: closing would unmount the progress but not stop the loop,
+// and a second import would then duplicate what the first was still adding.
 export default function SessionCsvImportDialog({ configId, open, onClose }: Props) {
+  const [locked, setLocked] = useState(false);
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <Content key={open ? "open" : "closed"} configId={configId} onClose={onClose} />
+    <Dialog open={open} onClose={locked ? undefined : onClose} maxWidth="md" fullWidth>
+      <Content key={open ? "open" : "closed"} configId={configId} onClose={onClose} onLockChange={setLocked} />
     </Dialog>
   );
 }

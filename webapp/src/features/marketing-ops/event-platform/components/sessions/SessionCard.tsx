@@ -33,6 +33,7 @@ import {
   hasPresenterDetail,
   itemColorHex,
 } from "@features/marketing-ops/event-platform/utils/agenda";
+import { isHttpUrl } from "./itemForm";
 
 function SessionLink({ href, label }: { href: string; label: string }) {
   return (
@@ -174,10 +175,10 @@ export function SessionCardBody({
           {item.room.name}
         </Box>
       )}
-      {presenter && articleLinksEnabled && item.articleUrl && (
+      {presenter && articleLinksEnabled && item.articleUrl && isHttpUrl(item.articleUrl) && (
         <SessionLink href={item.articleUrl} label={item.articleLabel ?? "Article"} />
       )}
-      {presenter && videoLinksEnabled && item.videoUrl && (
+      {presenter && videoLinksEnabled && item.videoUrl && isHttpUrl(item.videoUrl) && (
         <SessionLink href={item.videoUrl} label={item.videoLabel ?? "Video"} />
       )}
       {showKind && (

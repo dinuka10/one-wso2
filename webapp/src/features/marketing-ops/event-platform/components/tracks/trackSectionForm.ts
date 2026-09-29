@@ -19,10 +19,11 @@
 
 import type {
   ConferenceDay,
+  Session,
   TrackSection,
   TrackTopic,
 } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
-import { minuteToSlot } from "@features/marketing-ops/event-platform/utils/agenda";
+import { minuteToSlot, slotCountOf } from "@features/marketing-ops/event-platform/utils/agenda";
 import { timeToMinute } from "@features/marketing-ops/event-platform/utils/dateTime";
 
 /** The slug the backend would derive, used when a topic is created inline. */
@@ -80,5 +81,29 @@ export function overlapsSibling(
   if (startSlot === null || endSlot === null || durationSlots <= 0) return false;
   return siblings.some(
     (s) => s.id !== editingId && startSlot < s.startSlot + s.durationSlots && s.startSlot < endSlot,
+  );
+}
+
+// Whether the span lies inside `day`'s grid. The pickers' min and max times
+// only flag a typed value outside the day; they still emit it.
+export function isSpanInDay(
+  span: SectionSpan,
+  day: Pick<ConferenceDay, "startMinute" | "endMinute">,
+): boolean {
+  const { startSlot, endSlot } = span;
+  if (startSlot === null || endSlot === null) return true;
+  return startSlot >= 0 && endSlot <= slotCountOf(day);
+}
+
+// The section's sessions whose start the span no longer covers. A section's
+// body clips its cards, so these would be placed but drawn nowhere.
+export function strandedSessions<T extends Pick<Session, "slotIndex">>(
+  span: SectionSpan,
+  sessions: readonly T[],
+): T[] {
+  const { startSlot, endSlot, durationSlots } = span;
+  if (startSlot === null || endSlot === null || durationSlots <= 0) return [];
+  return sessions.filter(
+    (s) => s.slotIndex !== null && (s.slotIndex < startSlot || s.slotIndex >= endSlot),
   );
 }

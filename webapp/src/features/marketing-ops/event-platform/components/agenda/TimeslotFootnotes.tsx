@@ -55,8 +55,9 @@ interface TimeslotFootnotesProps {
   slot: number;
   footnotes: TimeslotFootnote[];
   isPending: boolean;
-  onAdd: (slotIndex: number, text: string) => void;
-  onUpdate: (id: string, text: string) => void;
+  // Each calls onSuccess once saved; the dialog stays open until then.
+  onAdd: (slotIndex: number, text: string, onSuccess: () => void) => void;
+  onUpdate: (id: string, text: string, onSuccess: () => void) => void;
   onDelete: (id: string) => void;
 }
 
@@ -123,11 +124,10 @@ export default function TimeslotFootnotes({
   const canSave = text.trim().length > 0 && !overLimit;
 
   const handleSave = () => {
-    if (!editing || !canSave) return;
+    if (!editing || !canSave || isPending) return;
     const value = text.trim();
-    if (editing.id) onUpdate(editing.id, value);
-    else onAdd(slot, value);
-    close();
+    if (editing.id) onUpdate(editing.id, value, close);
+    else onAdd(slot, value, close);
   };
 
   const handleKeyDown = useSubmitShortcut(handleSave, canSave && !isPending);
@@ -195,7 +195,7 @@ export default function TimeslotFootnotes({
         </IconButton>
       </Box>
 
-      <Dialog open={editing !== null} onClose={close} maxWidth="xs" fullWidth onKeyDown={handleKeyDown}>
+      <Dialog open={editing !== null} onClose={isPending ? undefined : close} maxWidth="xs" fullWidth onKeyDown={handleKeyDown}>
         <DialogTitle sx={{ fontWeight: 600 }}>{editing?.id ? "Edit footnote" : "Add footnote"}</DialogTitle>
         <DialogContent>
           <TextField

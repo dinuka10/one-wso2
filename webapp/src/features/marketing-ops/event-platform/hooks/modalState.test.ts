@@ -112,6 +112,7 @@ describe("modalTargets", () => {
     expect(targets.editItem).toBeUndefined();
     expect(targets.deleteTrackCount).toBe(0);
     expect(targets.editSectionSiblings).toEqual([]);
+    expect(targets.editSectionSessions).toEqual([]);
     expect(targets.deleteSectionSessions).toEqual([]);
   });
 
@@ -120,21 +121,23 @@ describe("modalTargets", () => {
     expect(modalTargets(open({ kind: "edit-item", itemId: "gone" }), data).editItem).toBeUndefined();
   });
 
-  it("counts only the scheduled regular sessions a track delete unschedules", () => {
+  it("counts every scheduled item a track delete unschedules, whatever its kind", () => {
     const targets = modalTargets(open({ kind: "delete-track", trackId: "t1" }), data);
     expect(targets.deleteTrack?.id).toBe("t1");
-    expect(targets.deleteTrackCount).toBe(2);
+    // s1, s2 and the keynote s4 carry t1; s3 has no slot.
+    expect(targets.deleteTrackCount).toBe(3);
   });
 
-  it("checks a track section against its own track's sections only", () => {
+  it("checks a track section against its own track's sections and the keynote sections", () => {
     const targets = modalTargets(open({ kind: "edit-section", sectionId: "sec-1" }), data);
     expect(targets.editSection?.id).toBe("sec-1");
-    expect(targets.editSectionSiblings.map((s) => s.id)).toEqual(["sec-1", "sec-2"]);
+    expect(targets.editSectionSiblings.map((s) => s.id)).toEqual(["sec-1", "sec-2", "key-1"]);
+    expect(targets.editSectionSessions.map((s) => s.id)).toEqual(["s2"]);
   });
 
-  it("checks a keynote section against the day's keynote sections", () => {
+  it("checks a keynote section against every section of the day", () => {
     const targets = modalTargets(open({ kind: "edit-section", sectionId: "key-1" }), data);
-    expect(targets.editSectionSiblings.map((s) => s.id)).toEqual(["key-1"]);
+    expect(targets.editSectionSiblings.map((s) => s.id)).toEqual(["key-1", "sec-1", "sec-2", "sec-3"]);
   });
 
   it("lists the placed sessions a section delete unschedules", () => {

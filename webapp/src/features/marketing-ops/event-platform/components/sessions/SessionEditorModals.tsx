@@ -22,6 +22,7 @@ import { useNotifyFailure } from "@features/marketing-ops/event-platform/api/bas
 import TrackNameDialog from "@features/marketing-ops/event-platform/components/tracks/TrackNameDialog";
 import TrackSectionDialog from "@features/marketing-ops/event-platform/components/tracks/TrackSectionDialog";
 import type { AgendaEditor } from "@features/marketing-ops/event-platform/hooks/useAgendaEditor";
+import { sectionSiblings } from "@features/marketing-ops/event-platform/hooks/modalState";
 import type { ModalStateApi } from "@features/marketing-ops/event-platform/hooks/useModalState";
 import { trackLabel } from "@features/marketing-ops/event-platform/utils/agenda";
 import { stripHtmlTags } from "@features/marketing-ops/event-platform/utils/sanitizeHtml";
@@ -54,6 +55,7 @@ export default function SessionEditorModals({
     deleteSession,
     editSection,
     editSectionSiblings,
+    editSectionSessions,
     deleteSection,
     deleteSectionSessions,
     removePopover,
@@ -71,8 +73,8 @@ export default function SessionEditorModals({
     confirmation = {
       title: "Delete track",
       text: deleteTrackCount
-        ? `Delete "${trackLabel(deleteTrack)}"? Its ${plural(deleteTrackCount, "scheduled session")} will return to Unscheduled.`
-        : `Delete "${trackLabel(deleteTrack)}"? It has no scheduled sessions.`,
+        ? `Delete "${trackLabel(deleteTrack)}"? Its ${plural(deleteTrackCount, "scheduled item")} will return to Unscheduled.`
+        : `Delete "${trackLabel(deleteTrack)}"? It has no scheduled items.`,
       confirmLabel: "Delete",
       confirmAction: () => editor.handleDeleteTrack(deleteTrack.id),
     };
@@ -164,7 +166,7 @@ export default function SessionEditorModals({
           activeDay={activeDay}
           trackId={modal.trackId}
           configId={configId}
-          existingSections={sections.filter((s) => s.trackId === modal.trackId)}
+          existingSections={sectionSiblings("track", modal.trackId, sections, keynoteSections)}
           isPending={editor.createSection.isPending}
           onConfirm={(input) =>
             editor.createSection.mutate({ ...input, trackId: modal.trackId }, { onSuccess: closeModal })
@@ -178,7 +180,7 @@ export default function SessionEditorModals({
           activeDay={activeDay}
           trackId={null}
           configId={configId}
-          existingSections={keynoteSections}
+          existingSections={sectionSiblings("keynote", null, sections, keynoteSections)}
           isPending={editor.createKeynoteSection.isPending}
           onConfirm={(input) =>
             editor.createKeynoteSection.mutate({ ...input, dayId: activeDay.id }, { onSuccess: closeModal })
@@ -194,6 +196,7 @@ export default function SessionEditorModals({
           configId={configId}
           existingSections={editSectionSiblings}
           initialSection={editSection}
+          sectionSessions={editSectionSessions}
           isPending={editor.updateSection.isPending}
           onConfirm={(input) =>
             editor.updateSection.mutate(

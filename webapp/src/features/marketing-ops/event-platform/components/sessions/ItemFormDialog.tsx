@@ -60,7 +60,13 @@ import {
 import { formatDayLabel, isValidDate, minuteToTime } from "@features/marketing-ops/event-platform/utils/dateTime";
 import SpeakerFormDialog from "@features/marketing-ops/event-platform/components/speakers/SpeakerFormDialog";
 import SpeakerRoleDialog from "./SpeakerRoleDialog";
-import { isItemFormValid, itemFormDefaults, type ItemFormValues } from "./itemForm";
+import {
+  endsAfterStart,
+  isItemFormValid,
+  isLinkValid,
+  itemFormDefaults,
+  type ItemFormValues,
+} from "./itemForm";
 
 const { TimePicker } = DatePickers;
 
@@ -95,10 +101,21 @@ export default function ItemFormDialog({
   const { control, setValue, getValues } = useForm<ItemFormValues>({
     defaultValues: itemFormDefaults(days, initialItem),
   });
-  const [kind, title, dayId, topicIsManual, speakerAssignments] = useWatch({
-    control,
-    name: ["kind", "title", "dayId", "topicIsManual", "speakerAssignments"],
-  });
+  const [kind, title, dayId, topicIsManual, speakerAssignments, startTime, endTime, articleUrl, videoUrl] =
+    useWatch({
+      control,
+      name: [
+        "kind",
+        "title",
+        "dayId",
+        "topicIsManual",
+        "speakerAssignments",
+        "startTime",
+        "endTime",
+        "articleUrl",
+        "videoUrl",
+      ],
+    });
   const [roleDialog, setRoleDialog] = useState<RoleDialogState>(null);
   const [addingSpeaker, setAddingSpeaker] = useState(false);
 
@@ -111,11 +128,12 @@ export default function ItemFormDialog({
   const maxTime = selectedDay ? minuteToTime(selectedDay.endMinute) : undefined;
 
   const presenter = hasPresenterDetail(kind);
-  const isValid = isItemFormValid({ title });
+  const isValid = isItemFormValid({ title, startTime, endTime, articleUrl, videoUrl });
+  const endError = !endsAfterStart({ startTime, endTime });
   const isEdit = !!initialItem;
 
-  // Values are read whole rather than through handleSubmit: validity is the
-  // title alone, and the rich-text fields report through setValue.
+  // Values are read whole rather than through handleSubmit: validity is
+  // isItemFormValid's, and the rich-text fields report through setValue.
   const submit = () => {
     if (isValid && !isPending) onSave(getValues());
   };
@@ -271,7 +289,18 @@ export default function ItemFormDialog({
                     minutesStep={5}
                     minTime={minTime}
                     maxTime={maxTime}
-                    slotProps={PICKER_SLOT_PROPS}
+                    slotProps={
+                      name === "endTime" && endError
+                        ? {
+                            ...PICKER_SLOT_PROPS,
+                            textField: {
+                              ...PICKER_SLOT_PROPS.textField,
+                              error: true,
+                              helperText: "Must be after the start time",
+                            },
+                          }
+                        : PICKER_SLOT_PROPS
+                    }
                   />
                 )}
               />
@@ -396,7 +425,20 @@ function LinkFields({
       <Controller
         control={control}
         name={urlName}
-        render={({ field }) => <TextField label={`${what} URL`} size="small" fullWidth {...field} />}
+        render={({ field }) => {
+          const invalid = !isLinkValid(field.value);
+          return (
+            <TextField
+              label={`${what} URL`}
+              placeholder="https://"
+              size="small"
+              fullWidth
+              error={invalid}
+              helperText={invalid ? "Must start with http:// or https://" : undefined}
+              {...field}
+            />
+          );
+        }}
       />
       <Controller
         control={control}

@@ -18,13 +18,16 @@ import { describe, expect, it } from "vitest";
 import type {
   ConferenceDay,
   Session,
+  TrackSection,
 } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
 import { UNPLACED } from "@features/marketing-ops/event-platform/api/cacheUpdates";
 import {
   DEFAULT_DURATION_SLOTS,
   durationSlotsOf,
   editPlacement,
+  endsAfterStart,
   formPlacement,
+  isHttpUrl,
   isItemFormValid,
   itemFormDefaults,
   sessionFieldsOf,
@@ -134,10 +137,35 @@ describe("itemFormDefaults", () => {
 });
 
 describe("isItemFormValid", () => {
+  const valid = { title: "Talk", startTime: null, endTime: null, articleUrl: "", videoUrl: "" };
+
   it("requires a title", () => {
-    expect(isItemFormValid({ title: "" })).toBe(false);
-    expect(isItemFormValid({ title: "  " })).toBe(false);
-    expect(isItemFormValid({ title: "Talk" })).toBe(true);
+    expect(isItemFormValid({ ...valid, title: "" })).toBe(false);
+    expect(isItemFormValid({ ...valid, title: "  " })).toBe(false);
+    expect(isItemFormValid(valid)).toBe(true);
+  });
+
+  it("refuses an end time that is not after the start", () => {
+    expect(isItemFormValid({ ...valid, startTime: at(10), endTime: at(9) })).toBe(false);
+    expect(isItemFormValid({ ...valid, startTime: at(10), endTime: at(10) })).toBe(false);
+    expect(isItemFormValid({ ...valid, startTime: at(10), endTime: at(11) })).toBe(true);
+    expect(endsAfterStart({ startTime: at(10), endTime: null })).toBe(true);
+  });
+
+  it("refuses a link that isn't http(s)", () => {
+    expect(isItemFormValid({ ...valid, articleUrl: "javascript:alert(1)" })).toBe(false);
+    expect(isItemFormValid({ ...valid, videoUrl: "data:text/html,x" })).toBe(false);
+    expect(isItemFormValid({ ...valid, articleUrl: "https://blog.example.com/post" })).toBe(true);
+  });
+});
+
+describe("isHttpUrl", () => {
+  it("accepts http and https only", () => {
+    expect(isHttpUrl("https://video.example.com/watch")).toBe(true);
+    expect(isHttpUrl(" http://example.com ")).toBe(true);
+    expect(isHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(isHttpUrl("mailto:someone@example.com")).toBe(false);
+    expect(isHttpUrl("example.com")).toBe(false);
   });
 });
 
@@ -166,9 +194,12 @@ describe("durationSlotsOf", () => {
     expect(durationSlotsOf({ startTime: null, endTime: at(10) })).toBe(DEFAULT_DURATION_SLOTS);
   });
 
-  it("counts the slots between the times, at least one", () => {
+  it("keeps the item's own length when a time is blank", () => {
+    expect(durationSlotsOf({ startTime: null, endTime: null }, 9)).toBe(9);
+  });
+
+  it("counts the slots between the times", () => {
     expect(durationSlotsOf({ startTime: at(9), endTime: at(9, 45) })).toBe(9);
-    expect(durationSlotsOf({ startTime: at(10), endTime: at(9) })).toBe(1);
   });
 
   it("ignores the pickers' calendar day", () => {
@@ -178,59 +209,155 @@ describe("durationSlotsOf", () => {
   });
 });
 
+function track(id: string, over: Partial<TrackSection> = {}): TrackSection {
+  return {
+    id,
+    trackId: "t1",
+    dayId: "d1",
+    kind: "track",
+    label: "Section",
+    startSlot: 12,
+    durationSlots: 24,
+    position: 0,
+    roomId: null,
+    room: null,
+    topicId: null,
+    ...over,
+  };
+}
+
+const placed = (id: string, over: Partial<Session> = {}) =>
+  session({ id, dayId: "d1", trackId: "t1", slotIndex: 0, sectionId: "sec-1", ...over });
+
 describe("formPlacement", () => {
   it("places a full-width item from its day and start time", () => {
-    expect(formPlacement({ kind: "keynote", dayId: "d1", startTime: at(9, 30) }, [day], 6)).toEqual({
-      dayId: "d1",
-      trackId: null,
-      slotIndex: 6,
+    expect(formPlacement({ kind: "keynote", dayId: "d1", startTime: at(9, 30) }, [day], 6, [])).toEqual({
+      kind: "place",
+      placement: { dayId: "d1", trackId: null, slotIndex: 6, sectionId: null },
     });
   });
 
   it("pulls an item back so it ends inside the day", () => {
-    expect(formPlacement({ kind: "break", dayId: "d1", startTime: at(16, 50) }, [day], 6)?.slotIndex).toBe(
-      90,
-    );
+    const outcome = formPlacement({ kind: "break", dayId: "d1", startTime: at(16, 50) }, [day], 6, []);
+    expect(outcome.kind === "place" && outcome.placement.slotIndex).toBe(90);
+  });
+
+  it("refuses a time that lands on a scheduled item, as a drop would", () => {
+    const talk = placed("talk", { slotIndex: 12, trackId: "t3" });
+    expect(formPlacement({ kind: "keynote", dayId: "d1", startTime: at(10) }, [day], 6, [talk])).toEqual({
+      kind: "overlap",
+    });
   });
 
   it("never places a regular session, or one without a day or time", () => {
-    expect(formPlacement({ kind: "session", dayId: "d1", startTime: at(10) }, [day], 6)).toBeNull();
-    expect(formPlacement({ kind: "keynote", dayId: "", startTime: at(10) }, [day], 6)).toBeNull();
-    expect(formPlacement({ kind: "keynote", dayId: "d1", startTime: null }, [day], 6)).toBeNull();
+    const ignored = { kind: "ignored" };
+    expect(formPlacement({ kind: "session", dayId: "d1", startTime: at(10) }, [day], 6, [])).toEqual(ignored);
+    expect(formPlacement({ kind: "keynote", dayId: "", startTime: at(10) }, [day], 6, [])).toEqual(ignored);
+    expect(formPlacement({ kind: "keynote", dayId: "d1", startTime: null }, [day], 6, [])).toEqual(ignored);
   });
 });
 
 describe("editPlacement", () => {
+  const sec = track("sec-1");
+  const keySec = track("key-1", { kind: "keynote", trackId: null });
+  const board = (sessions: Session[] = []) => ({ sessions, sections: [sec, keySec] });
+  const place = (placement: object) => ({ kind: "place", placement });
+
   it("unschedules a full-width item whose day or time was cleared", () => {
+    const keynote = placed("k", { kind: "keynote", trackId: null, sectionId: null, slotIndex: 12 });
     expect(
-      editPlacement(session({ kind: "keynote" }), { kind: "keynote", dayId: "", startTime: null }, [day], 6),
-    ).toEqual(UNPLACED);
+      editPlacement(keynote, { kind: "keynote", dayId: "", startTime: null }, [day], 6, board([keynote])),
+    ).toEqual(place(UNPLACED));
+    expect(
+      editPlacement(keynote, { kind: "keynote", dayId: "d1", startTime: null }, [day], 6, board([keynote])),
+    ).toEqual(place(UNPLACED));
   });
 
-  it("keeps a full-width item's section", () => {
+  it("sends nothing when the item is not moved", () => {
+    const keynote = placed("k", { kind: "keynote", trackId: null, sectionId: null, slotIndex: 12 });
+    // Even with something already under it: a title fix must not be refused.
+    const under = placed("u", { trackId: "t2", slotIndex: 14 });
     expect(
-      editPlacement(
-        session({ kind: "keynote", sectionId: "sec-1" }),
-        { kind: "keynote", dayId: "d1", startTime: at(10) },
-        [day],
-        6,
-      ),
-    ).toEqual({ dayId: "d1", trackId: null, slotIndex: 12, sectionId: "sec-1" });
+      editPlacement(keynote, { kind: "keynote", dayId: "d1", startTime: at(10) }, [day], 6, board([keynote, under])),
+    ).toEqual({ kind: "ignored" });
+    expect(
+      editPlacement(session({ kind: "keynote" }), { kind: "keynote", dayId: "", startTime: null }, [day], 6, board()),
+    ).toEqual({ kind: "ignored" });
   });
 
-  it("re-slots a session inside its section without moving it elsewhere", () => {
-    const existing = session({ dayId: "d1", trackId: "t1", slotIndex: 0, sectionId: "sec-1" });
-    expect(editPlacement(existing, { kind: "session", dayId: "d1", startTime: at(10) }, [day], 6)).toEqual({
-      dayId: "d1",
-      trackId: "t1",
-      slotIndex: 12,
-      sectionId: "sec-1",
-    });
+  it("keeps a full-width item in its keynote section while its start is inside it", () => {
+    const keynote = placed("k", { kind: "keynote", trackId: null, sectionId: "key-1", slotIndex: 12 });
+    expect(
+      editPlacement(keynote, { kind: "keynote", dayId: "d1", startTime: at(10, 30) }, [day], 6, board([keynote])),
+    ).toEqual(place({ dayId: "d1", trackId: null, slotIndex: 18, sectionId: "key-1" }));
   });
 
-  it("leaves a session outside a section alone", () => {
+  it("takes a full-width item out of its section when its start leaves it", () => {
+    const keynote = placed("k", { kind: "keynote", trackId: null, sectionId: "key-1", slotIndex: 12 });
+    // 13:00 is past the section's 10:00–12:00.
     expect(
-      editPlacement(session(), { kind: "session", dayId: "d1", startTime: at(10) }, [day], 6),
-    ).toBeNull();
+      editPlacement(keynote, { kind: "keynote", dayId: "d1", startTime: at(13) }, [day], 6, board([keynote])),
+    ).toEqual(place({ dayId: "d1", trackId: null, slotIndex: 48, sectionId: null }));
+  });
+
+  it("drops the section when a full-width item moves to another day", () => {
+    const day2: ConferenceDay = { ...day, id: "d2", dayIndex: 1 };
+    const keynote = placed("k", { kind: "keynote", trackId: null, sectionId: "key-1", slotIndex: 12 });
+    expect(
+      editPlacement(keynote, { kind: "keynote", dayId: "d2", startTime: at(10) }, [day, day2], 6, board([keynote])),
+    ).toEqual(place({ dayId: "d2", trackId: null, slotIndex: 12, sectionId: null }));
+  });
+
+  it("re-slots a session inside its section, clamped to the section", () => {
+    const existing = placed("s1", { slotIndex: 12 });
+    expect(
+      editPlacement(existing, { kind: "session", dayId: "d1", startTime: at(10, 30) }, [day], 6, board([existing])),
+    ).toEqual(place({ dayId: "d1", trackId: "t1", slotIndex: 18, sectionId: "sec-1" }));
+    // 09:00 is before the section; 11:55 would run past its end.
+    expect(
+      editPlacement(existing, { kind: "session", dayId: "d1", startTime: at(9) }, [day], 8, board([existing])),
+    ).toEqual(place({ dayId: "d1", trackId: "t1", slotIndex: 12, sectionId: "sec-1" }));
+    expect(
+      editPlacement(existing, { kind: "session", dayId: "d1", startTime: at(11, 55) }, [day], 6, board([existing])),
+    ).toEqual(place({ dayId: "d1", trackId: "t1", slotIndex: 30, sectionId: "sec-1" }));
+  });
+
+  it("refuses a re-slot onto another session in the same track", () => {
+    const existing = placed("s1", { slotIndex: 12 });
+    const other = placed("s2", { slotIndex: 24 });
+    expect(
+      editPlacement(existing, { kind: "session", dayId: "d1", startTime: at(11) }, [day], 6, board([existing, other])),
+    ).toEqual({ kind: "overlap" });
+  });
+
+  it("gives a session turned keynote its section's track, not none", () => {
+    const existing = placed("s1", { slotIndex: 12 });
+    expect(
+      editPlacement(existing, { kind: "keynote", dayId: "d1", startTime: at(10, 30) }, [day], 6, board([existing])),
+    ).toEqual(place({ dayId: "d1", trackId: "t1", slotIndex: 18, sectionId: "sec-1" }));
+  });
+
+  it("unschedules a session that can no longer be drawn", () => {
+    const day2: ConferenceDay = { ...day, id: "d2", dayIndex: 1 };
+    const inSection = placed("s1", { slotIndex: 12 });
+    // Moved to another day, where it has no section.
+    expect(
+      editPlacement(inSection, { kind: "session", dayId: "d2", startTime: at(10) }, [day, day2], 6, board()),
+    ).toEqual(place(UNPLACED));
+    // A free keynote turned into a session.
+    const keynote = placed("k", { kind: "keynote", trackId: null, sectionId: null, slotIndex: 12 });
+    expect(
+      editPlacement(keynote, { kind: "session", dayId: "d1", startTime: at(10) }, [day], 6, board()),
+    ).toEqual(place(UNPLACED));
+  });
+
+  it("leaves an unscheduled session, and one whose section isn't loaded, alone", () => {
+    expect(
+      editPlacement(session(), { kind: "session", dayId: "d1", startTime: at(10) }, [day], 6, board()),
+    ).toEqual({ kind: "ignored" });
+    const elsewhere = placed("s1", { sectionId: "sec-gone" });
+    expect(
+      editPlacement(elsewhere, { kind: "session", dayId: "d1", startTime: at(10) }, [day], 6, board()),
+    ).toEqual({ kind: "ignored" });
   });
 });

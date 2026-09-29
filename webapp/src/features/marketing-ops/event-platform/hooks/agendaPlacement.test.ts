@@ -106,6 +106,18 @@ describe("resolveDrop", () => {
     });
   });
 
+  it("files a full-width item dropped on a track cell under no track", () => {
+    const brk = session({ id: "b", kind: "break", trackId: null, sectionId: null, slotIndex: null });
+    expect(resolveDrop({ ...base, session: brk, placed: [], trackId: "t2", rawSlot: 12 })).toEqual({
+      kind: "place",
+      placement: { dayId: "d1", trackId: null, slotIndex: 12, sectionId: null },
+    });
+    // Inside a track section it keeps that section's track.
+    expect(
+      resolveDrop({ ...base, session: brk, placed: [], trackId: "t2", rawSlot: 12, sectionId: "sec-2" }),
+    ).toEqual({ kind: "place", placement: { dayId: "d1", trackId: "t2", slotIndex: 12, sectionId: "sec-2" } });
+  });
+
   it("refuses an overlap in the same track, not in another", () => {
     const other = session({ id: "o", slotIndex: 10, durationSlots: 6 });
     const moving = session({ id: "m" });

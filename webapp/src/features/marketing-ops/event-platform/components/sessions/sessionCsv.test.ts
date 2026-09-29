@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { Speaker } from "@features/marketing-ops/event-platform/types/eventPlatformTypes";
-import { parseSessionCsv } from "./sessionCsv";
+import { parseSessionCsv, textToBlockHtml, textToInlineHtml } from "./sessionCsv";
 
 const speakers = [
   { id: "42", name: "Speaker One" },
@@ -79,5 +79,22 @@ describe("parseSessionCsv", () => {
     const { rows } = parseSessionCsv(`${HEADER}\r\n,No title,,10,\r\n   \r\n`, speakers);
     expect(rows).toHaveLength(1);
     expect(rows[0].valid).toBe(false);
+  });
+});
+
+describe("textToInlineHtml / textToBlockHtml", () => {
+  it("escapes markup characters so they survive the sanitiser as text", () => {
+    expect(textToInlineHtml("Rendering with <canvas> & a < b")).toBe(
+      "Rendering with &lt;canvas&gt; &amp; a &lt; b",
+    );
+  });
+
+  it("keeps a title's line breaks as <br>", () => {
+    expect(textToInlineHtml("One\r\nTwo")).toBe("One<br>Two");
+  });
+
+  it("puts each description line in its own paragraph, and leaves a blank one blank", () => {
+    expect(textToBlockHtml("First <b>\n\nThird")).toBe("<p>First &lt;b&gt;</p><p><br></p><p>Third</p>");
+    expect(textToBlockHtml("")).toBe("");
   });
 });

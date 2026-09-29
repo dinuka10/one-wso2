@@ -57,6 +57,10 @@ export type DropOutcome =
 // would reject it). A drop that overlaps a placed item is refused: a full-width
 // item clashes with anything in its slots; a track item only with items in its
 // own track, or with a full-width one.
+//
+// A full-width item outside a section belongs to no track, whichever track's
+// cell it was dropped on: it is drawn across all of them, and a track delete
+// must not take it off the board.
 export function resolveDrop({
   session,
   placed,
@@ -66,7 +70,7 @@ export function resolveDrop({
   rawSlot,
   sectionId,
 }: {
-  session: Session | undefined;
+  session: Pick<Session, "id" | "kind" | "durationSlots"> | undefined;
   placed: readonly Session[];
   dayId: string | undefined;
   slotCount: number;
@@ -91,7 +95,12 @@ export function resolveDrop({
 
   return {
     kind: "place",
-    placement: { dayId, trackId, slotIndex: slot, sectionId: sectionId ?? null },
+    placement: {
+      dayId,
+      trackId: isFullWidth && !sectionId ? null : trackId,
+      slotIndex: slot,
+      sectionId: sectionId ?? null,
+    },
   };
 }
 

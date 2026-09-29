@@ -64,7 +64,10 @@ export default function SessionEditorPage() {
   }
 
   const { event, days, activeDay } = editor;
-  const paletteIds = new Set(editor.palette.map((s) => s.id));
+  // Only a card from this board can be unplaced by a drop on the palette. A
+  // palette card is already unscheduled (the source sent a PUT for it anyway),
+  // and a foreign drag (selected text, a link) carries no session id at all.
+  const boardIds = new Set(editor.placed.map((s) => s.id));
 
   return (
     <Box
@@ -118,10 +121,8 @@ export default function SessionEditorPage() {
           onImportCsv={modalState.openSessionCsv}
           onDragStart={drag.onDragStart}
           onDragEnd={drag.clearOver}
-          // A palette card dropped back on the palette is already unscheduled;
-          // the source sent a placement PUT for it anyway.
           onUnplace={(id) => {
-            if (id && !paletteIds.has(id)) editor.unplace(id);
+            if (boardIds.has(id)) editor.unplace(id);
           }}
           onEdit={modalState.openEditItem}
           onDelete={modalState.openDeleteSession}

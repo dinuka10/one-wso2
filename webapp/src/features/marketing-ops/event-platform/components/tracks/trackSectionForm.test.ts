@@ -15,7 +15,14 @@
 // under the License.
 
 import { describe, expect, it } from "vitest";
-import { overlapsSibling, sectionSpan, slugify, suggestTopicId } from "./trackSectionForm";
+import {
+  isSpanInDay,
+  overlapsSibling,
+  sectionSpan,
+  slugify,
+  strandedSessions,
+  suggestTopicId,
+} from "./trackSectionForm";
 
 const topics = [
   { id: "tp-1", slug: "ai", name: "AI" },
@@ -72,5 +79,38 @@ describe("overlapsSibling", () => {
   it("ignores the section being edited, and spans with no length", () => {
     expect(overlapsSibling({ startSlot: 2, endSlot: 8, durationSlots: 6 }, siblings, "sec-1")).toBe(false);
     expect(overlapsSibling({ startSlot: 8, endSlot: 4, durationSlots: -4 }, siblings)).toBe(false);
+  });
+});
+
+describe("isSpanInDay", () => {
+  // 09:00–17:00: 96 slots.
+  const fullDay = { startMinute: 540, endMinute: 1020 };
+
+  it("accepts a span inside the day, and one not yet complete", () => {
+    expect(isSpanInDay(sectionSpan(fullDay, at(9), at(17)), fullDay)).toBe(true);
+    expect(isSpanInDay(sectionSpan(fullDay, at(8), null), fullDay)).toBe(true);
+  });
+
+  it("refuses a span that starts before the day or ends after it", () => {
+    expect(isSpanInDay(sectionSpan(fullDay, at(8, 30), at(10)), fullDay)).toBe(false);
+    expect(isSpanInDay(sectionSpan(fullDay, at(16), at(17, 15)), fullDay)).toBe(false);
+  });
+});
+
+describe("strandedSessions", () => {
+  const sessions = [
+    { id: "a", slotIndex: 0 },
+    { id: "b", slotIndex: 12 },
+    { id: "c", slotIndex: 23 },
+    { id: "d", slotIndex: null },
+  ];
+
+  it("lists the sessions whose start falls outside the span", () => {
+    const span = { startSlot: 6, endSlot: 18, durationSlots: 12 };
+    expect(strandedSessions(span, sessions).map((s) => s.id)).toEqual(["a", "c"]);
+  });
+
+  it("strands nothing while the span is incomplete", () => {
+    expect(strandedSessions({ startSlot: 6, endSlot: null, durationSlots: 0 }, sessions)).toEqual([]);
   });
 });
