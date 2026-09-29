@@ -25,6 +25,7 @@ import {
   sanitizeInlineRichText,
   sanitizeRichText,
   toEditorBlocks,
+  toEditorRichText,
 } from "@features/marketing-ops/event-platform/utils/sanitizeHtml";
 
 // Ported from the source's Quill 2 editor onto react-quill-new (the React 19
@@ -196,7 +197,7 @@ export default function RichTextEditor({
   const isInline = variant === "inline";
   // Captured once, so a parent re-render with the sanitised value it just
   // received never reaches the editor.
-  const [initialValue] = useState(() => (isInline ? toEditorBlocks(value) : sanitizeRichText(value)));
+  const [initialValue] = useState(() => (isInline ? toEditorBlocks(value) : toEditorRichText(value)));
   const [shouldFocus] = useState(Boolean(autoFocus));
 
   // Seeded straight into the DOM, as the source did, rather than through
