@@ -66,6 +66,7 @@ import {
   orderDateBounds,
   pageOf,
   pageSelectionState,
+  runInOrder,
   selectPage,
   shortOrderId,
   sliderMax,
@@ -106,11 +107,12 @@ export default function ShopOrdersPage() {
 
   // Read from the cache on every render, so the drawer follows a status change.
   const openOrder = orders.find((o) => o.id === openOrderId) ?? null;
-  // Only still-confirmed orders count as picked: one fulfilled from the drawer
-  // after it was ticked drops out here rather than being sent again.
-  const picked = bulkFulfillTargets(orders, selected);
 
   const visible = filterShopOrders(orders, search, filters);
+  // Only still-confirmed orders on screen count as picked: one fulfilled from
+  // the drawer after it was ticked drops out rather than being sent again, and
+  // one the filters or search hide is not fulfilled unseen.
+  const picked = bulkFulfillTargets(visible, selected);
   const filterCount = activeOrderFilterCount(filters);
   const currentPage = clampPage(page, visible.length, rowsPerPage);
   const paged = pageOf(visible, currentPage, rowsPerPage);
@@ -139,16 +141,14 @@ export default function ShopOrdersPage() {
   // (the hook patches each into the cache as it succeeds).
   async function bulkFulfil(ids: string[]) {
     setBulkBusy(true);
-    let done = 0;
     try {
-      for (const id of ids) {
-        await updateStatus.mutateAsync({ id, status: "FULFILLED" });
-        done += 1;
+      const { done, ...run } = await runInOrder(ids, (id) => updateStatus.mutateAsync({ id, status: "FULFILLED" }));
+      if ("error" in run) {
+        notifyFailure(`Fulfilled ${done} of ${ids.length} orders, then stopped.`, run.error);
+        return;
       }
       showSuccess(`${done} order${done === 1 ? "" : "s"} marked as fulfilled.`);
       setSelected([]);
-    } catch (err) {
-      notifyFailure(`Fulfilled ${done} of ${ids.length} orders, then stopped.`, err);
     } finally {
       setBulkBusy(false);
     }

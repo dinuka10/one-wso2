@@ -71,22 +71,28 @@ import {
   STOCK_FILTER_LABELS,
   VISIBILITY_FILTER_LABELS,
   activeInventoryFilterCount,
+  bulkDeleteTargets,
   bulkVisibilityTargets,
   clampPage,
   filterShopItems,
   hasPurchaseLimit,
   itemCategories,
+  keepLiveStock,
   numberOrEmpty,
   pageOf,
   pageSelectionState,
   planBulkDelete,
   purchasedItemIds,
+  runBulkDelete,
+  runInOrder,
   selectPage,
   sliderMax,
+  soldCounts,
   toggleId,
   toggledVisibility,
   visibilityAction,
   withVisibility,
+  type BulkRun,
   type InventoryFilters,
   type LimitFilter,
   type ShopItemFields,
@@ -137,6 +143,7 @@ export default function ShopInventoryPage() {
   // attempt offers "hide instead" straight away.
   const [knownPurchased, setKnownPurchased] = useState<ReadonlySet<string>>(new Set());
   const purchased = new Set([...purchasedItemIds(orders ?? []), ...knownPurchased]);
+  const sold = orders ? soldCounts(orders) : null;
 
   const [dialog, setDialog] = useState<{ open: boolean; item: ShopItem | null }>({ open: false, item: null });
   const [confirm, setConfirm] = useState<ConfirmationContent | null>(null);
@@ -157,13 +164,28 @@ export default function ShopInventoryPage() {
   const pageIds = paged.map((i) => i.id);
   const headerState = pageSelectionState(selected, pageIds);
 
-  const toHide = bulkVisibilityTargets(items, selected, "HIDDEN");
-  const toShow = bulkVisibilityTargets(items, selected, "VISIBLE");
+  // Bulk actions reach only the selected items the filters and search leave on
+  // screen, so the count on each button is what the operator can see.
+  const toHide = bulkVisibilityTargets(visible, selected, "HIDDEN");
+  const toShow = bulkVisibilityTargets(visible, selected, "VISIBLE");
+  const toDelete = bulkDeleteTargets(visible, selected);
 
   // Every filter change starts again from the first page, as in the source.
   function changeFilters(patch: Partial<InventoryFilters>) {
     setFilters((f) => ({ ...f, ...patch }));
     setPage(0);
+  }
+
+  // The item as the server has it now. Stock falls as orders come in and an
+  // update is a full PUT, so a body built from the cached list would put back
+  // whatever sold since it loaded. Undefined if the item has gone.
+  async function latest(id: string): Promise<ShopItem | undefined> {
+    const { data } = await itemsQuery.refetch({ throwOnError: true });
+    return data?.find((i) => i.id === id);
+  }
+
+  async function setVisibility(item: ShopItem, visibility: "VISIBLE" | "HIDDEN") {
+    await updateItem.mutateAsync(withVisibility((await latest(item.id)) ?? item, visibility));
   }
 
   function hideInstead(item: ShopItem): ConfirmationContent {
@@ -172,10 +194,10 @@ export default function ShopInventoryPage() {
       text: `"${item.name}" has been bought, so it can't be deleted — only hidden from the shop. Hide it instead?`,
       confirmLabel: "Hide",
       confirmAction: () =>
-        updateItem.mutate(withVisibility(item, "HIDDEN"), {
-          onSuccess: () => showSuccess(`"${item.name}" is now hidden.`),
-          onError: (err) => notifyFailure("Couldn't hide the item.", err),
-        }),
+        void setVisibility(item, "HIDDEN").then(
+          () => showSuccess(`"${item.name}" is now hidden.`),
+          (err) => notifyFailure("Couldn't hide the item.", err),
+        ),
     };
   }
 
@@ -211,10 +233,10 @@ export default function ShopInventoryPage() {
       text: `${label} "${item.name}" ${where} the shop?`,
       confirmLabel: label,
       confirmAction: () =>
-        updateItem.mutate(withVisibility(item, toggledVisibility(item)), {
-          onSuccess: () => showSuccess(`"${item.name}" is now ${done}.`),
-          onError: (err) => notifyFailure("Couldn't change the item's visibility.", err),
-        }),
+        void setVisibility(item, toggledVisibility(item)).then(
+          () => showSuccess(`"${item.name}" is now ${done}.`),
+          (err) => notifyFailure("Couldn't change the item's visibility.", err),
+        ),
     });
   }
 
@@ -224,7 +246,8 @@ export default function ShopInventoryPage() {
       if (editing) {
         // Edit is disabled on deleted items, so this is VISIBLE or HIDDEN.
         const visibility = editing.visibility === "VISIBLE" ? "VISIBLE" : "HIDDEN";
-        await updateItem.mutateAsync({ id: editing.id, ...fields, visibility });
+        const fresh = keepLiveStock(fields, editing, await latest(editing.id));
+        await updateItem.mutateAsync({ id: editing.id, ...fresh, visibility });
       } else {
         await createItem.mutateAsync({ ...fields, visibility: "VISIBLE" });
       }
@@ -237,14 +260,16 @@ export default function ShopInventoryPage() {
 
   // One request per item: there is no bulk endpoint. Sequential, like the
   // source, so a failure stops the run where it is instead of racing the rest.
-  async function runBulk(label: string, work: () => Promise<number>, done: (count: number) => string) {
+  async function runBulk(label: string, work: () => Promise<BulkRun>, done: (count: number) => string) {
     setBulkBusy(true);
     try {
-      const count = await work();
-      if (count > 0) showSuccess(done(count));
+      const run = await work();
+      if ("error" in run) {
+        notifyFailure(`Couldn't ${label} every selected item.`, run.error);
+        return;
+      }
+      if (run.done > 0) showSuccess(done(run.done));
       setSelected([]);
-    } catch (err) {
-      notifyFailure(`Couldn't ${label} every selected item.`, err);
     } finally {
       setBulkBusy(false);
     }
@@ -261,17 +286,14 @@ export default function ShopInventoryPage() {
       confirmAction: () =>
         void runBulk(
           verb,
-          async () => {
-            for (const item of targets) await updateItem.mutateAsync(withVisibility(item, visibility));
-            return targets.length;
-          },
+          () => runInOrder(targets, (item) => setVisibility(item, visibility)),
           (n) => `${n} item${n === 1 ? "" : "s"} ${verb === "hide" ? "hidden" : "shown"}.`,
         ),
     });
   }
 
-  function bulkDelete() {
-    const count = selected.length;
+  function bulkDelete(targets: ShopItem[]) {
+    const count = targets.length;
     setConfirm({
       title: "Delete selected items",
       text: `Delete ${count} item${count === 1 ? "" : "s"}? Items that have been bought are hidden instead.`,
@@ -280,19 +302,19 @@ export default function ShopInventoryPage() {
         void runBulk(
           "delete or hide",
           async () => {
-            const plan = planBulkDelete(items, selected, purchased);
-            const hide = [...plan.toHide];
-            for (const item of plan.toDelete) {
-              try {
-                await deleteItem.mutateAsync(item.id);
-              } catch (err) {
-                if (!isConflict(err)) throw err;
-                setKnownPurchased((prev) => new Set(prev).add(item.id));
-                if (item.visibility !== "HIDDEN") hide.push(item);
-              }
+            const run = await runBulkDelete(
+              planBulkDelete(targets, selected, purchased),
+              {
+                remove: (item) => deleteItem.mutateAsync(item.id),
+                hide: (item) => setVisibility(item, "HIDDEN"),
+                isConflict,
+              },
+            );
+            if (run.conflicted.length > 0) {
+              setKnownPurchased((prev) => new Set([...prev, ...run.conflicted]));
             }
-            for (const item of hide) await updateItem.mutateAsync(withVisibility(item, "HIDDEN"));
-            return plan.toDelete.length + plan.toHide.length;
+            const done = run.deleted + run.hidden;
+            return "error" in run ? { done, error: run.error } : { done };
           },
           (n) => `${n} item${n === 1 ? "" : "s"} processed. Items that had been bought were hidden instead.`,
         ),
@@ -396,15 +418,17 @@ export default function ShopInventoryPage() {
                   Show ({toShow.length})
                 </Button>
               )}
-              <Button
-                variant="outlined"
-                color="error"
-                disabled={bulkBusy}
-                onClick={bulkDelete}
-                sx={{ whiteSpace: "nowrap" }}
-              >
-                Delete ({selected.length})
-              </Button>
+              {toDelete.length > 0 && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  disabled={bulkBusy}
+                  onClick={() => bulkDelete(toDelete)}
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  Delete ({toDelete.length})
+                </Button>
+              )}
               {bulkBusy && <CircularProgress size={20} sx={{ alignSelf: "center" }} />}
             </>
           )}
@@ -433,7 +457,7 @@ export default function ShopInventoryPage() {
         </Typography>
       ) : (
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small" sx={{ minWidth: 760 }}>
+          <Table size="small" sx={{ minWidth: 820 }}>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox">
@@ -448,6 +472,7 @@ export default function ShopInventoryPage() {
                 <TableCell align="center">Category</TableCell>
                 <TableCell align="right">Price (O2C)</TableCell>
                 <TableCell align="right">Stock</TableCell>
+                <TableCell align="right">Sold</TableCell>
                 <TableCell align="right">Limit / attendee</TableCell>
                 <TableCell align="center">Visibility</TableCell>
                 <TableCell align="center">Actions</TableCell>
@@ -498,6 +523,8 @@ export default function ShopInventoryPage() {
                         {item.availableStock}
                       </Typography>
                     </TableCell>
+                    {/* A dash until the orders load, rather than a wrong 0. */}
+                    <TableCell align="right">{sold ? (sold.get(item.id) ?? 0) : "—"}</TableCell>
                     <TableCell align="right">
                       {hasPurchaseLimit(item) ? item.maxPerUser : (
                         <Typography component="span" variant="body2" color="text.secondary">

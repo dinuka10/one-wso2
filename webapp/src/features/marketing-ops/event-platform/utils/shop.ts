@@ -71,6 +71,30 @@ export function pageSelectionState(selected: readonly string[], pageIds: readonl
   return { all, some: picked > 0 && !all };
 }
 
+/** How a bulk run ended: how many steps went through, and the error that stopped it, if one did. */
+export interface BulkRun {
+  done: number;
+  error?: unknown;
+}
+
+/**
+ * Runs `step` on each target in turn — there are no bulk endpoints — and
+ * stops at the first failure, so the rest are not raced against it. Returns
+ * rather than throws, so the caller can say how far the run got.
+ */
+export async function runInOrder<T>(targets: readonly T[], step: (target: T) => Promise<unknown>): Promise<BulkRun> {
+  let done = 0;
+  for (const target of targets) {
+    try {
+      await step(target);
+    } catch (error) {
+      return { done, error };
+    }
+    done += 1;
+  }
+  return { done };
+}
+
 /** A number field's value: `""` for empty, otherwise the number (NaN kept out). */
 export function numberOrEmpty(raw: string): number | "" {
   if (raw.trim() === "") return "";
@@ -194,6 +218,19 @@ export function purchasedItemIds(orders: readonly Pick<ShopOrder, "items">[]): S
   return new Set(orders.flatMap((o) => (o.items ?? []).map((i) => i.itemId)));
 }
 
+/**
+ * Units sold per item id. Only orders that were paid count: a pending one may
+ * still expire, and an expired or failed one had its quantity put back.
+ */
+export function soldCounts(orders: readonly Pick<ShopOrder, "status" | "items">[]): Map<string, number> {
+  const sold = new Map<string, number>();
+  for (const o of orders) {
+    if (o.status !== "CONFIRMED" && o.status !== "FULFILLED") continue;
+    for (const line of o.items ?? []) sold.set(line.itemId, (sold.get(line.itemId) ?? 0) + line.quantity);
+  }
+  return sold;
+}
+
 /** What the eye button does to an item: hide a visible one, show (or restore) the rest. */
 export function toggledVisibility(item: Pick<ShopItem, "visibility">): ShopItemInput["visibility"] {
   return item.visibility === "VISIBLE" ? "HIDDEN" : "VISIBLE";
@@ -207,7 +244,9 @@ export function visibilityAction(item: Pick<ShopItem, "visibility">): "hide" | "
 
 /**
  * An update body for an existing item at a new visibility — the item's own
- * fields, re-sent in full because the endpoint is a PUT.
+ * fields, re-sent in full because the endpoint is a PUT. Pass the item as the
+ * server has it now, not the cached copy: stock falls as orders come in, and
+ * the cached figure would put back what was sold since the list loaded.
  */
 export function withVisibility(
   item: ShopItem,
@@ -239,25 +278,79 @@ export function bulkVisibilityTargets(
 }
 
 /**
+ * The selected items a bulk delete acts on. Deleted items are left out, as the
+ * row's Delete button is disabled for them: hiding a purchased one would bring
+ * it back as HIDDEN. Pass the items on screen, so the count on the button is
+ * what the operator sees.
+ */
+export function bulkDeleteTargets(items: readonly ShopItem[], selectedIds: readonly string[]): ShopItem[] {
+  const picked = new Set(selectedIds);
+  return items.filter((i) => picked.has(i.id) && i.visibility !== "DELETED");
+}
+
+export interface BulkDeletePlan {
+  toDelete: ShopItem[];
+  toHide: ShopItem[];
+}
+
+/**
  * How a bulk delete splits: purchased items can only be hidden (and those
- * already hidden need nothing), the rest are deleted. Ids no longer in the
- * list are dropped.
+ * already hidden need nothing), the rest are deleted. Deleted items and ids
+ * no longer in the list are dropped.
  */
 export function planBulkDelete(
   items: readonly ShopItem[],
   selectedIds: readonly string[],
   purchased: ReadonlySet<string>,
-): { toDelete: ShopItem[]; toHide: ShopItem[] } {
-  const byId = new Map(items.map((i) => [i.id, i]));
+): BulkDeletePlan {
   const toDelete: ShopItem[] = [];
   const toHide: ShopItem[] = [];
-  for (const id of selectedIds) {
-    const item = byId.get(id);
-    if (!item) continue;
-    if (!purchased.has(id)) toDelete.push(item);
+  for (const item of bulkDeleteTargets(items, selectedIds)) {
+    if (!purchased.has(item.id)) toDelete.push(item);
     else if (item.visibility !== "HIDDEN") toHide.push(item);
   }
   return { toDelete, toHide };
+}
+
+export interface BulkDeleteResult {
+  deleted: number;
+  hidden: number;
+  /** Items the backend refused to delete (409): some order references them. */
+  conflicted: string[];
+  /** The failure that stopped the run, if one did. */
+  error?: unknown;
+}
+
+/**
+ * Carries out a bulk-delete plan, one request at a time. A delete refused
+ * with a conflict means an order placed since the list loaded names the item:
+ * it is hidden instead (unless it already is) and reported in `conflicted`.
+ * Any other failure stops the run. Returns rather than throws, so what was
+ * done before the failure is still reported.
+ */
+export async function runBulkDelete(
+  plan: BulkDeletePlan,
+  ops: {
+    remove: (item: ShopItem) => Promise<unknown>;
+    hide: (item: ShopItem) => Promise<unknown>;
+    isConflict: (err: unknown) => boolean;
+  },
+): Promise<BulkDeleteResult> {
+  const hide = [...plan.toHide];
+  const conflicted: string[] = [];
+  let deleted = 0;
+  for (const item of plan.toDelete) {
+    try {
+      await ops.remove(item);
+      deleted += 1;
+    } catch (error) {
+      if (!ops.isConflict(error)) return { deleted, hidden: 0, conflicted, error };
+      conflicted.push(item.id);
+      if (item.visibility !== "HIDDEN") hide.push(item);
+    }
+  }
+  const run = await runInOrder(hide, ops.hide);
+  return { deleted, hidden: run.done, conflicted, ...("error" in run ? { error: run.error } : {}) };
 }
 
 // ---- The item form ---------------------------------------------------------
@@ -293,6 +386,21 @@ export function toShopItemFormValues(item?: ShopItem | null): ShopItemFormValues
     category: item?.category ?? DEFAULT_CATEGORY,
     maxPerUser: item?.maxPerUser == null ? "" : String(item.maxPerUser),
   };
+}
+
+/**
+ * An edit's fields, with the stock the server has now (`latest`) unless the
+ * operator changed the figure the dialog opened with (`loaded`). The endpoint
+ * is a PUT, so re-sending the loaded figure would put back stock sold while
+ * the dialog was open.
+ */
+export function keepLiveStock(
+  fields: ShopItemFields,
+  loaded: Pick<ShopItem, "availableStock">,
+  latest: Pick<ShopItem, "availableStock"> | undefined,
+): ShopItemFields {
+  if (!latest || fields.availableStock !== loaded.availableStock) return fields;
+  return { ...fields, availableStock: latest.availableStock };
 }
 
 /** Trimmed and typed. Call only on values the validators below accept. */
@@ -488,8 +596,12 @@ export function orderDateBounds(orders: readonly Pick<ShopOrder, "createdOn">[])
   return { min: new Date(min - (min % MINUTE_MS)), max: new Date(Math.max(...times)) };
 }
 
+/**
+ * A line's cost. Prices may be fractional, so the product is rounded to 12
+ * significant digits: 3 × 0.1 shows as 0.3, not 0.30000000000000004.
+ */
 export function lineTotal(item: Pick<ShopOrderItem, "quantity" | "priceAtPurchase">): number {
-  return item.quantity * item.priceAtPurchase;
+  return Number((item.quantity * item.priceAtPurchase).toPrecision(12));
 }
 
 /** An order's id as the table shows it — the tail, since the full id is a UUID. */

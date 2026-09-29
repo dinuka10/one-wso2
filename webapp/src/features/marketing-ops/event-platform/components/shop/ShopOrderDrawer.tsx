@@ -51,6 +51,13 @@ const TRANSITION_BUTTON: Partial<
   FULFILLED: { label: "Mark as fulfilled", color: "info", variant: "contained" },
 };
 
+// What a hand change skips. The status is recorded as given: this screen does
+// not look for the payment on the blockchain, so the operator is told so.
+const HAND_CHANGE_NOTE: Partial<Record<ShopOrderStatus, string>> = {
+  CONFIRMED: "This does not check the blockchain for the payment — confirm only an order you know was paid.",
+  EXPIRED: "A payment still in flight may yet complete — expire only an order you know won't be paid.",
+};
+
 interface Props {
   eventId: string;
   /** The order to show; null keeps the drawer closed. */
@@ -79,7 +86,9 @@ export default function ShopOrderDrawer({ eventId, order, onClose }: Props) {
     const label = ORDER_STATUS_INFO[status].label.toLowerCase();
     setConfirm({
       title: "Change the order's status",
-      text: `Mark this order as ${label}? This can't be undone.`,
+      text: [`Mark this order as ${label}?`, HAND_CHANGE_NOTE[status], "This can't be undone."]
+        .filter(Boolean)
+        .join(" "),
       confirmAction: () =>
         updateStatus.mutate(
           { id, status },

@@ -21,6 +21,7 @@ import {
   DEFAULT_ORDER_FILTERS,
   activeInventoryFilterCount,
   activeOrderFilterCount,
+  bulkDeleteTargets,
   bulkFulfillTargets,
   bulkVisibilityTargets,
   checkImageUrl,
@@ -34,6 +35,7 @@ import {
   fromShopItemFormValues,
   itemCategories,
   joinAddressParts,
+  keepLiveStock,
   lineTotal,
   nextOrderStatuses,
   numberOrEmpty,
@@ -42,9 +44,12 @@ import {
   pageSelectionState,
   planBulkDelete,
   purchasedItemIds,
+  runBulkDelete,
+  runInOrder,
   selectPage,
   shortOrderId,
   sliderMax,
+  soldCounts,
   toShopItemFormValues,
   toggleId,
   toggledVisibility,
@@ -110,6 +115,19 @@ describe("selection and paging", () => {
     expect(pageSelectionState([], [])).toEqual({ all: false, some: false });
     expect(pageSelectionState(["a"], ["a", "b"])).toEqual({ all: false, some: true });
     expect(pageSelectionState(["a", "b"], ["a", "b"])).toEqual({ all: true, some: false });
+  });
+
+  it("runs steps in order and stops at the first failure, reporting how far it got", async () => {
+    const seen: number[] = [];
+    const boom = new Error("boom");
+    expect(await runInOrder([1, 2, 3], async (n) => void seen.push(n))).toEqual({ done: 3 });
+    seen.length = 0;
+    const run = await runInOrder([1, 2, 3], async (n) => {
+      if (n === 2) throw boom;
+      seen.push(n);
+    });
+    expect(run).toEqual({ done: 1, error: boom });
+    expect(seen).toEqual([1]);
   });
 
   it("reads a number field as empty or a number", () => {
@@ -178,6 +196,20 @@ describe("inventory actions", () => {
     expect([...purchasedItemIds(orders)].sort()).toEqual(["1", "2"]);
   });
 
+  it("counts units sold per item from paid orders only", () => {
+    const line = (itemId: string, quantity: number) => ({ itemId, name: "Mug", quantity, priceAtPurchase: 5 });
+    const sold = soldCounts([
+      order({ id: "o1", status: "CONFIRMED", items: [line("1", 2), line("2", 1)] }),
+      order({ id: "o2", status: "FULFILLED", items: [line("1", 3)] }),
+      order({ id: "o3", status: "PENDING", items: [line("1", 5)] }),
+      order({ id: "o4", status: "EXPIRED", items: [line("2", 4)] }),
+      order({ id: "o5", status: "FAILED", items: [line("3", 1)] }),
+    ]);
+    expect(sold.get("1")).toBe(5);
+    expect(sold.get("2")).toBe(1);
+    expect(sold.has("3")).toBe(false);
+  });
+
   it("toggles visibility, restoring a deleted item to visible", () => {
     expect(toggledVisibility({ visibility: "VISIBLE" })).toBe("HIDDEN");
     expect(toggledVisibility({ visibility: "HIDDEN" })).toBe("VISIBLE");
@@ -208,6 +240,74 @@ describe("inventory actions", () => {
     const plan = planBulkDelete(items, ["1", "2", "3", "gone"], new Set(["2", "3"]));
     expect(plan.toDelete.map((i) => i.id)).toEqual(["1"]);
     expect(plan.toHide.map((i) => i.id)).toEqual(["2"]);
+  });
+
+  it("leaves deleted items out of a bulk delete, purchased or not", () => {
+    const items = [
+      item({ id: "1" }),
+      item({ id: "2", visibility: "DELETED" }),
+      item({ id: "3", visibility: "DELETED" }),
+    ];
+    const sel = ["1", "2", "3"];
+    expect(bulkDeleteTargets(items, sel).map((i) => i.id)).toEqual(["1"]);
+    const plan = planBulkDelete(items, sel, new Set(["2"]));
+    expect(plan.toDelete.map((i) => i.id)).toEqual(["1"]);
+    expect(plan.toHide).toEqual([]);
+  });
+
+  describe("running a bulk delete", () => {
+    const conflict = new Error("409");
+    const isConflict = (err: unknown) => err === conflict;
+
+    function fakes(fail: Record<string, unknown> = {}) {
+      const calls: string[] = [];
+      return {
+        calls,
+        ops: {
+          remove: async (i: ShopItem) => {
+            calls.push(`remove ${i.id}`);
+            if (fail[i.id]) throw fail[i.id];
+          },
+          hide: async (i: ShopItem) => {
+            calls.push(`hide ${i.id}`);
+            if (fail[`hide ${i.id}`]) throw fail[`hide ${i.id}`];
+          },
+          isConflict,
+        },
+      };
+    }
+
+    it("deletes, then hides the planned and the conflicted items", async () => {
+      const { calls, ops } = fakes({ "2": conflict });
+      const plan = { toDelete: [item({ id: "1" }), item({ id: "2" })], toHide: [item({ id: "9" })] };
+      expect(await runBulkDelete(plan, ops)).toEqual({ deleted: 1, hidden: 2, conflicted: ["2"] });
+      expect(calls).toEqual(["remove 1", "remove 2", "hide 9", "hide 2"]);
+    });
+
+    it("does not re-hide a conflicted item that is already hidden", async () => {
+      const { calls, ops } = fakes({ "1": conflict });
+      const plan = { toDelete: [item({ id: "1", visibility: "HIDDEN" })], toHide: [] };
+      expect(await runBulkDelete(plan, ops)).toEqual({ deleted: 0, hidden: 0, conflicted: ["1"] });
+      expect(calls).toEqual(["remove 1"]);
+    });
+
+    it("stops at any other failure, hiding nothing, and keeps what it learnt", async () => {
+      const boom = new Error("500");
+      const { calls, ops } = fakes({ "1": conflict, "2": boom });
+      const plan = {
+        toDelete: [item({ id: "1" }), item({ id: "2" }), item({ id: "3" })],
+        toHide: [item({ id: "9" })],
+      };
+      expect(await runBulkDelete(plan, ops)).toEqual({ deleted: 0, hidden: 0, conflicted: ["1"], error: boom });
+      expect(calls).toEqual(["remove 1", "remove 2"]);
+    });
+
+    it("reports a failed hide with the count so far", async () => {
+      const boom = new Error("500");
+      const { ops } = fakes({ "hide 8": boom });
+      const plan = { toDelete: [item({ id: "1" })], toHide: [item({ id: "7" }), item({ id: "8" })] };
+      expect(await runBulkDelete(plan, ops)).toEqual({ deleted: 1, hidden: 1, conflicted: [], error: boom });
+    });
   });
 });
 
@@ -318,6 +418,13 @@ describe("orders", () => {
     expect(nextOrderStatuses("FAILED")).toEqual([]);
   });
 
+  it("keeps the server's stock on an edit unless the operator changed it", () => {
+    const fields = fromShopItemFormValues(toShopItemFormValues(item({ id: "1", availableStock: 20 })));
+    expect(keepLiveStock(fields, { availableStock: 20 }, { availableStock: 14 }).availableStock).toBe(14);
+    expect(keepLiveStock({ ...fields, availableStock: 50 }, { availableStock: 20 }, { availableStock: 14 }).availableStock).toBe(50);
+    expect(keepLiveStock(fields, { availableStock: 20 }, undefined).availableStock).toBe(20);
+  });
+
   it("bulk-fulfils only orders still confirmed", () => {
     expect(bulkFulfillTargets(orders, ["ord-0001", "ord-0002", "ord-0003", "gone"])).toEqual(["ord-0002"]);
   });
@@ -331,6 +438,7 @@ describe("orders", () => {
 
   it("totals a line, shortens an id, joins an address and formats a date", () => {
     expect(lineTotal({ quantity: 3, priceAtPurchase: 7 })).toBe(21);
+    expect(lineTotal({ quantity: 3, priceAtPurchase: 0.1 })).toBe(0.3);
     expect(shortOrderId("ord-0001")).toBe("…0001");
     expect(shortOrderId("ab")).toBe("ab");
     expect(joinAddressParts("Example City", null, " ", "00000")).toBe("Example City, 00000");
