@@ -138,9 +138,26 @@ export function safePaletteClass(value: unknown): string {
   return typeof value === "string" && PALETTE_CLASSES.has(value) ? value : `palette-${DEFAULT_COLOR_TOKEN}`;
 }
 
-/** Titles: inline marks only, block boundaries kept as <br>. */
-export function inlineRichHtml(value: unknown): string {
-  return typeof value === "string" ? sanitizeInlineRichText(value) : "";
+// The shared sanitiser keeps `class` for the editor's own use, but the editor
+// emits none (font weight travels as an inline style), and this page loads
+// Bootstrap: a span classed "position-fixed top-0 start-0 w-100 h-100" would
+// be the same full-page overlay safeLogoStyle stops, by another attribute.
+// `unlink` unwraps links into their text, for a title inside a card that is
+// itself an <a>: nested anchors make the parser split the card apart.
+function publishable(html: string, unlink = false): string {
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  holder.querySelectorAll("[class]").forEach((el) => el.removeAttribute("class"));
+  if (unlink) holder.querySelectorAll("a").forEach((a) => a.replaceWith(...a.childNodes));
+  return holder.innerHTML;
+}
+
+/**
+ * Titles: inline marks only, block boundaries kept as <br>. `unlink` for a
+ * title rendered inside a link.
+ */
+export function inlineRichHtml(value: unknown, { unlink = false }: { unlink?: boolean } = {}): string {
+  return typeof value === "string" ? publishable(sanitizeInlineRichText(value), unlink) : "";
 }
 
 // Descriptions written before the editor shipped are plain text with
@@ -149,7 +166,7 @@ export function inlineRichHtml(value: unknown): string {
 /** Descriptions: paragraphs, lists, quotes, inline marks and links. */
 export function descriptionRichHtml(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) return "";
-  if (/<[a-z][\s\S]*>/i.test(value)) return sanitizeRichText(value);
+  if (/<[a-z][\s\S]*>/i.test(value)) return publishable(sanitizeRichText(value));
   return sanitizeRichText(
     value
       .split(/\n{2,}/)

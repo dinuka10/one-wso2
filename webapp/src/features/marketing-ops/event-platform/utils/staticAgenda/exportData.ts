@@ -240,7 +240,9 @@ export function readAgendaExport(raw: unknown): AgendaExport {
 
 export interface SpeakersExport {
   conference: { name: string; startDate: string };
-  sections: { label: string; speakers: ExportSpeaker[] }[];
+  // `role` is the session role the section was grouped on (keynote, leader,
+  // internal, ...); a speaker holding two roles appears in both sections.
+  sections: { role: string; label: string; speakers: ExportSpeaker[] }[];
 }
 
 export function readSpeakersExport(raw: unknown): SpeakersExport {
@@ -249,6 +251,7 @@ export function readSpeakersExport(raw: unknown): SpeakersExport {
   return {
     conference: { name: str(conference.name), startDate: str(conference.startDate) },
     sections: arr(root.sections).map((s) => ({
+      role: str(obj(s).role),
       label: str(obj(s).label),
       speakers: arr(obj(s).speakers).map(readSpeaker),
     })),

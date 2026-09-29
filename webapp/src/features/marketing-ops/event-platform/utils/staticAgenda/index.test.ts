@@ -161,6 +161,31 @@ describe("buildStaticAgendaHtml", () => {
     expect(doc.querySelector("#modal-s-1")).toBeNull();
   });
 
+  it("keeps a linked card whole when its title holds a link", () => {
+    const doc = parse(
+      buildStaticAgendaHtml(
+        agenda({
+          title: '<p>Opening <a href="https://example.com/more">talk</a></p>',
+          artifacts: [{ label: "Slides", url: "https://example.com/slides" }],
+        }),
+        { now: NOW },
+      ),
+    );
+    const link = doc.querySelector(".track-column > a");
+    expect(link?.querySelector(":scope > .SessionBlock h3")?.innerHTML).toBe("Opening talk");
+    expect(link?.querySelectorAll("a")).toHaveLength(0);
+  });
+
+  it("keeps a multi-line bio's lines apart in the modal", () => {
+    const data = agenda();
+    data.speakers["sp-1"] = { ...speakerOne, bio: "First line.\n\nSecond line." };
+    const doc = parse(buildStaticAgendaHtml(data, { now: NOW }));
+    expect([...doc.querySelectorAll("#modal-s-1 .cBioText")].map((p) => p.textContent)).toEqual([
+      "First line.",
+      "Second line.",
+    ]);
+  });
+
   it("omits the countdown once the start date has passed", () => {
     const html = buildStaticAgendaHtml(agenda(), { now: new Date("2026-06-01T00:00:00") });
     expect(parse(html).querySelector(".countdown-widget")).toBeNull();
@@ -305,11 +330,34 @@ describe("buildStaticSpeakersHtml", () => {
     expect([...doc.querySelectorAll("script")].every((s) => s.src)).toBe(true);
   });
 
-  it("puts keynote speakers first", () => {
-    const withKeynote = structuredClone(speakers);
-    withKeynote.sections[1].speakers[0].title = "Keynote speaker";
+  it("puts keynote speakers first, one card per speaker whatever their roles", () => {
+    const keynoter = { ...speakerOne, id: "sp-3", name: "Speaker Three", role: "keynote" };
+    const withKeynote = {
+      ...speakers,
+      roles: ["keynote", "leader", "moderator", "internal", "external"],
+      sections: [
+        { role: "keynote", label: "Keynote Speakers", speakers: [keynoter] },
+        { role: "leader", label: "Leaders", speakers: [{ ...keynoter, role: "leader" }, { ...speakerOne, id: "sp-4", name: "Speaker Four", role: "leader" }] },
+        ...speakers.sections,
+      ],
+    };
     const doc = parse(buildStaticSpeakersHtml(withKeynote));
-    expect(doc.querySelector("#speaker-content h2")?.textContent).toBe("Keynotes");
+    const sections = [...doc.querySelectorAll("#speaker-content section")].map((section) => ({
+      heading: section.querySelector("h2")?.textContent,
+      cards: [...section.querySelectorAll(".cSpeakerCard h4")].map((h) => h.textContent),
+    }));
+    expect(sections).toEqual([
+      { heading: "Keynotes", cards: ["SpeakerThree"] },
+      { heading: "Customers and Influencers", cards: ["SpeakerFour", "SpeakerOne"] },
+      { heading: "WSO2 Speakers", cards: ["SpeakerTwo"] },
+    ]);
+  });
+
+  it("does not take a title that mentions keynotes for a keynote speaker", () => {
+    const titled = structuredClone(speakers);
+    titled.sections[1].speakers[0].title = "Keynote speaker";
+    const doc = parse(buildStaticSpeakersHtml(titled));
+    expect(doc.querySelector("#speaker-content h2")?.textContent).toBe("WSO2 Speakers");
   });
 
   it("escapes text and drops unsafe URLs and styles", () => {

@@ -28,6 +28,8 @@ import { readAgendaExport, readSpeakersExport } from "./exportData";
 import { renderAgendaParts, type AgendaRenderOptions } from "./renderAgenda";
 import { renderSpeakersParts } from "./renderSpeakers";
 
+export { SPEAKERS_PAGE_ROLES } from "./renderSpeakers";
+
 const SLOT = /%%([A-Z_]+)%%/g;
 
 /**

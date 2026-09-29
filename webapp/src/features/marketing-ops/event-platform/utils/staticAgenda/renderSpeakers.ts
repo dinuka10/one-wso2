@@ -25,8 +25,14 @@
 import { escapeHtml as esc, safeImageUrl, safeLinkUrl, safeLogoStyle } from "./html";
 import type { ExportSpeaker, SpeakersExport } from "./exportData";
 
+/**
+ * The session roles the speakers page is built from. The export's default is
+ * internal and external only, which leaves out keynote speakers and panel
+ * leads and moderators: exactly the people the page leads with.
+ */
+export const SPEAKERS_PAGE_ROLES = "keynote,leader,moderator,internal,external";
+
 const INTERNAL_LABEL = "Internal Speakers";
-const EXTERNAL_LABEL = "External Speakers";
 const INTERNAL_HEADING = "WSO2 Speakers";
 const EXTERNAL_HEADING = "Customers and Influencers";
 
@@ -123,38 +129,44 @@ function renderSpeakerCard(speaker: ExportSpeaker, modalId: string): string {
                 </div>`;
 }
 
-const isKeynote = (s: ExportSpeaker) => `${s.title} ${s.speakerType} ${s.role}`.toLowerCase().includes("keynote");
-
-// Keynote speakers are pulled out of whichever section they came in, so no
-// one appears twice; the rest keep their section, renamed for the public page.
+// The HTML build asks for every session role (see SPEAKERS_PAGE_ROLES), and
+// the export groups on it, so a speaker with two roles arrives once per role.
+// Each speaker gets one card: in Keynotes if any of their roles is keynote,
+// otherwise in the internal or external section their type puts them in.
+// Leaders and moderators have no section of their own on the public page.
 function groupSections(speakers: SpeakersExport): { label: string; speakers: ExportSpeaker[] }[] {
-  const keynotes: ExportSpeaker[] = [];
-  const internal: ExportSpeaker[] = [];
-  const external: ExportSpeaker[] = [];
+  const byId = new Map<string, { speaker: ExportSpeaker; keynote: boolean; internal: boolean }>();
   speakers.sections.forEach((section) =>
     section.speakers.forEach((s) => {
-      if (isKeynote(s)) keynotes.push(s);
-      else if (section.label === INTERNAL_LABEL || s.role === "internal" || s.speakerType === "internal") internal.push(s);
-      else external.push(s);
+      const keynote = section.role === "keynote" || s.role === "keynote";
+      const internal =
+        section.label === INTERNAL_LABEL || section.role === "internal" || s.role === "internal" || s.speakerType === "internal";
+      const seen = byId.get(s.id);
+      if (seen) {
+        seen.keynote ||= keynote;
+        seen.internal ||= internal;
+      } else byId.set(s.id, { speaker: s, keynote, internal });
     }),
   );
 
-  if (keynotes.length) {
-    return [
-      { label: "Keynotes", speakers: keynotes },
-      { label: EXTERNAL_HEADING, speakers: external },
-      { label: INTERNAL_HEADING, speakers: internal },
-    ].filter((s, i) => i === 0 || s.speakers.length > 0);
-  }
-  return speakers.sections.map((section) => ({
-    label:
-      section.label === INTERNAL_LABEL
-        ? INTERNAL_HEADING
-        : section.label === EXTERNAL_LABEL
-          ? EXTERNAL_HEADING
-          : section.label,
-    speakers: section.speakers,
-  }));
+  const entries = [...byId.values()];
+  const pick = (test: (e: (typeof entries)[number]) => boolean) => entries.filter(test).map((e) => e.speaker);
+  const keynotes = pick((e) => e.keynote);
+  const internal = pick((e) => !e.keynote && e.internal);
+  const external = pick((e) => !e.keynote && !e.internal);
+
+  // Without keynotes the page keeps the export's own order, internal first.
+  const sections = keynotes.length
+    ? [
+        { label: "Keynotes", speakers: keynotes },
+        { label: EXTERNAL_HEADING, speakers: external },
+        { label: INTERNAL_HEADING, speakers: internal },
+      ]
+    : [
+        { label: INTERNAL_HEADING, speakers: internal },
+        { label: EXTERNAL_HEADING, speakers: external },
+      ];
+  return sections.filter((s) => s.speakers.length > 0);
 }
 
 export interface SpeakersPageParts {

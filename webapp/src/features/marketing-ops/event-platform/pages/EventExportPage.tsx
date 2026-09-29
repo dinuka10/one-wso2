@@ -20,9 +20,14 @@
 
 import { useState } from "react";
 import { useParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Box, Button, CircularProgress, Stack, Tab, Tabs, Typography } from "@wso2/oxygen-ui";
 import { DownloadIcon } from "@wso2/oxygen-ui-icons-react";
 import ErrorNotice from "@components/error-notice/ErrorNotice";
+import { authedGet } from "@api/http";
+import { httpRetry } from "@api/errors";
+import { eventPlatformServiceUrls as urls } from "@config/apiConfig";
+import { eventPlatformKeys as keys } from "@features/marketing-ops/event-platform/api/queryKeys";
 import {
   useAgendaPreview,
   useDownloadAgenda,
@@ -30,14 +35,35 @@ import {
   useEvent,
   useSpeakersPreview,
 } from "@features/marketing-ops/event-platform/api/event";
-import { useNotifyFailure } from "@features/marketing-ops/event-platform/api/base";
+import { useEventPlatformBase, useNotifyFailure } from "@features/marketing-ops/event-platform/api/base";
 import {
   buildStaticAgendaHtml,
   buildStaticSpeakersHtml,
   saveHtmlFile,
+  SPEAKERS_PAGE_ROLES,
 } from "@features/marketing-ops/event-platform/utils/staticAgenda";
 
 type PreviewId = "agenda" | "speakers";
+
+// The speakers page's own copy of the speakers export: the preview and the
+// JSON download keep the server's default roles, which leave keynote speakers
+// out. Keyed under the preview's key, so whatever refreshes that refreshes this.
+function useSpeakersPageExport(eventId: string) {
+  const { getAccessToken, ready } = useEventPlatformBase();
+  return useQuery<unknown>({
+    queryKey: [...keys.exportSpeakers(eventId), SPEAKERS_PAGE_ROLES],
+    enabled: ready && Boolean(eventId),
+    queryFn: async () =>
+      authedGet<unknown>(urls.exportSpeakers(eventId, SPEAKERS_PAGE_ROLES), await getAccessToken()),
+    retry: httpRetry,
+  });
+}
+
+// A page source not yet loaded holds its button back; one that failed lets the
+// click through to report why, rather than leaving a disabled button unexplained.
+function sourceBlocks(query: { data: unknown; isError: boolean }): boolean {
+  return query.data === undefined && !query.isError;
+}
 
 export default function EventExportPage() {
   const { eventId = "" } = useParams<{ eventId: string }>();
@@ -45,9 +71,11 @@ export default function EventExportPage() {
 
   const agendaPreview = useAgendaPreview(eventId);
   const speakersPreview = useSpeakersPreview(eventId);
+  const speakersPage = useSpeakersPageExport(eventId);
   // Only for the event's default internal logo, which the agenda page shows
-  // under an all-internal keynote panel.
-  const { data: event } = useEvent(eventId);
+  // under an all-internal keynote panel. The agenda page waits for it: built
+  // without, that panel would quietly fall back to a panelist's logo.
+  const eventQuery = useEvent(eventId);
   const downloadAgenda = useDownloadAgenda(eventId);
   const downloadSpeakers = useDownloadSpeakers(eventId);
   const notifyFailure = useNotifyFailure();
@@ -61,15 +89,20 @@ export default function EventExportPage() {
       onError: (err) => notifyFailure("Could not download the speakers JSON.", err),
     });
 
-  // Built from the previews already on screen, so what is saved is what the
-  // admin just read. Pure string building with no request, hence no pending
-  // state; a malformed export surfaces as the builder's own message.
+  // Built from data already loaded (the agenda preview on screen, the event,
+  // and the speakers export with every role), so the click itself makes no
+  // request and has no pending state; a malformed export surfaces as the
+  // builder's own message, a failed source as its request's.
   const saveHtml = (build: () => string, filename: string, what: string) => {
     try {
       saveHtmlFile(build(), filename);
     } catch (err) {
       notifyFailure(`Could not build the ${what} page.`, err);
     }
+  };
+  const loaded = <T,>(query: { data: T | undefined; error: unknown }, what: string): T => {
+    if (query.data === undefined) throw query.error ?? new Error(`The ${what} has not loaded.`);
+    return query.data;
   };
 
   const tabs = {
@@ -105,12 +138,12 @@ export default function EventExportPage() {
           <Button
             variant="outlined"
             size="small"
-            disabled={!agendaPreview.data}
+            disabled={!agendaPreview.data || sourceBlocks(eventQuery)}
             onClick={() =>
               saveHtml(
                 () =>
                   buildStaticAgendaHtml(agendaPreview.data, {
-                    internalLogoUrl: event?.defaultInternalLogoUrl ?? null,
+                    internalLogoUrl: loaded(eventQuery, "event").defaultInternalLogoUrl ?? null,
                   }),
                 "agenda.html",
                 "agenda",
@@ -122,9 +155,13 @@ export default function EventExportPage() {
           <Button
             variant="outlined"
             size="small"
-            disabled={!speakersPreview.data}
+            disabled={sourceBlocks(speakersPage)}
             onClick={() =>
-              saveHtml(() => buildStaticSpeakersHtml(speakersPreview.data), "speakers.html", "speakers")
+              saveHtml(
+                () => buildStaticSpeakersHtml(loaded(speakersPage, "speakers export")),
+                "speakers.html",
+                "speakers",
+              )
             }
           >
             Speakers HTML

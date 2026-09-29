@@ -130,6 +130,22 @@ describe("rich text", () => {
     expect(html).toContain('<a target="_blank" rel="noopener noreferrer" href="https://example.com">good</a>');
   });
 
+  it("drops every class, so Bootstrap utilities can't restyle the public page", () => {
+    const overlay = '<span class="position-fixed top-0 start-0 w-100 h-100 bg-white z-3">Venue moved</span>';
+    expect(inlineRichHtml(`<p>${overlay}</p>`)).toBe("<span>Venue moved</span>");
+    expect(descriptionRichHtml(`<p class="lead">${overlay}</p>`)).toBe("<p><span>Venue moved</span></p>");
+    // Font weight still travels, as an inline style.
+    expect(inlineRichHtml('<p><span class="ql-fw-700">Bold</span></p>')).toBe(
+      '<span style="font-weight:700!important;">Bold</span>',
+    );
+  });
+
+  it("unwraps links in a title on request, keeping their text", () => {
+    const title = '<p>Read <a href="https://example.com">this</a></p>';
+    expect(inlineRichHtml(title, { unlink: true })).toBe("Read this");
+    expect(inlineRichHtml(title)).toContain('href="https://example.com"');
+  });
+
   it("turns a plain-text description into escaped paragraphs", () => {
     expect(descriptionRichHtml("First & one\n\nx < y")).toBe("<p>First &amp; one</p><p>x &lt; y</p>");
   });

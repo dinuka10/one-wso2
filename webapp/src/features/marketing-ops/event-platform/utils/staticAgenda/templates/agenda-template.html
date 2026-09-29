@@ -1313,6 +1313,11 @@
         margin-bottom: 0.75rem;
       }
 
+      /* A bio is one p.cBioText per line; only the last takes the tail. */
+      .cModelBio .cBioText:has(+ .cBioText) {
+        margin-bottom: 0.75rem;
+      }
+
       .cAlignCenter {
         text-align: center;
       }

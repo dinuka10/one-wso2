@@ -206,8 +206,6 @@
 
   // ── Countdown widget ─────────────────────────────────────────────
 
-  const COUNTDOWN_DISMISS_KEY = "agenda-countdown-dismissed";
-
   function countdownDigits(startDate) {
     const diffMs = startDate.getTime() - Date.now();
     if (diffMs <= 0) return null;
@@ -236,6 +234,10 @@
   // Absent when the agenda was exported without a future start date.
   const widget = document.querySelector(".countdown-widget");
   const startDateText = widget ? widget.dataset.startDate || "" : "";
+  // Scoped to the event's start date: every agenda published to the same
+  // origin shares one localStorage, so a bare key would hide next event's
+  // countdown from anyone who dismissed this one's.
+  const COUNTDOWN_DISMISS_KEY = "agenda-countdown-dismissed:" + startDateText;
   if (widget && !/^\d{4}-\d{2}-\d{2}$/.test(startDateText)) {
     widget.remove();
   } else if (widget) {

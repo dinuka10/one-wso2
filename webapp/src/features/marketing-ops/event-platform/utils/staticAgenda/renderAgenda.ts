@@ -264,12 +264,13 @@ function renderSessionCard(
 
   // cCardBody wraps everything but the footer, so the card is a two-item
   // flex column and the footer sticks to the bottom via margin-top:auto.
+  const titleHtml = inlineRichHtml(session.title, { unlink: !!linkUrl });
   const innerHtml =
     variant === "vari"
       ? `<div class="cCardBody row">
         <div class="col-md-12 col-lg-12 p-0">
           <div class="TimeSet"><span>${timeLabel}</span></div>
-          <h3>${inlineRichHtml(session.title)}</h3>
+          <h3>${titleHtml}</h3>
         </div>
         ${speakersHtml}
       </div>
@@ -278,7 +279,7 @@ function renderSessionCard(
         <div class="col-md-12 col-lg-10 p-0">
           <div class="TimeSet"><span>${timeLabel}</span></div>
         </div>
-        <h3>${inlineRichHtml(session.title)}</h3>
+        <h3>${titleHtml}</h3>
         <div class="row ${heightClass}">${speakersHtml}</div>
       </div>
       ${footerHtml}`;
@@ -448,9 +449,10 @@ function renderKeynoteItem(
   const timeHtml = `<div class="TimeSet">
               <span>${keynoteTimeLabel(session, startMinute)}</span>
             </div>`;
+  const titleInner = inlineRichHtml(session.title, { unlink: !!linkUrl });
   const titleHtml = `
       <div class="col-md-12 col-lg-12 ps-0">
-        <h3>${inlineRichHtml(session.title)}</h3>
+        <h3>${titleInner}</h3>
       </div>`;
 
   if (solo) {
@@ -473,7 +475,7 @@ function renderKeynoteItem(
           </div>
           ${roomHtml}
           <div class="col-md-12 col-lg-12 ps-0">
-            <h3>${inlineRichHtml(session.title)}</h3>
+            <h3>${titleInner}</h3>
           </div>
         </div>
       </div>
@@ -577,6 +579,16 @@ function renderFootnote(text: string): string {
 
 // ── Modals ─────────────────────────────────────────────────────────────
 
+// One <p> per line, as on the speakers page: the bio is a plain multiline
+// field, and a single paragraph would run its lines together.
+function bioParagraphs(bio: string): string {
+  return bio
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => `<p class="cBioText">${esc(line)}</p>`)
+    .join("");
+}
+
 function renderSpeakerPopupRow(speaker: ExportSpeaker, isLast: boolean): string {
   // No class="Logo": its 30px height cap would shrink the modal's logos.
   const logoHtml = logoImg(speaker, speaker.modalCompanyLogoSize, "", true);
@@ -588,7 +600,7 @@ function renderSpeakerPopupRow(speaker: ExportSpeaker, isLast: boolean): string 
     speaker.bio || linkedin
       ? `<div class="col-md-12 col-lg-12">
           <div class="cModelBio">
-            ${speaker.bio ? `<p class="cBioText">${esc(speaker.bio)}</p>` : ""}
+            ${bioParagraphs(speaker.bio)}
             ${linkedin}
           </div>
         </div>`
