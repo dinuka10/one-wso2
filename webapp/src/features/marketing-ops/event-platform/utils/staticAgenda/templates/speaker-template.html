@@ -1,0 +1,137 @@
+<!--
+ ~ Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
+ ~
+ ~ WSO2 LLC. licenses this file to you under the Apache License,
+ ~ Version 2.0 (the "License"); you may not use this file except
+ ~ in compliance with the License.
+ ~ You may obtain a copy of the License at
+ ~
+ ~ http://www.apache.org/licenses/LICENSE-2.0
+ ~
+ ~ Unless required by applicable law or agreed to in writing,
+ ~ software distributed under the License is distributed on an
+ ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ ~ KIND, either express or implied.  See the License for the
+ ~ specific language governing permissions and limitations
+ ~ under the License.
+ ~
+ ~ The public speakers page's shell, from the source's public/speaker-template.html
+ ~ minus its drop zone and its render script: renderSpeakers.ts builds the markup
+ ~ that fills the %%…%% slots. This comment is stripped from the built page.
+ -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>%%TITLE%%</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+      crossorigin="anonymous"
+    />
+    <style>
+      :root {
+        --color-navy: #1c1565;
+        --color-blue-deep: #035385;
+        --color-cyan: #08efe2;
+        --color-white: #ffffff;
+        --color-black: #000000;
+        --color-orange-gradient-start: #f05a24;
+        --color-bg-page: #ffffff;
+        --color-shadow-10: rgba(0, 0, 0, 0.1);
+        --color-border-slate: #475e7e;
+        --color-border-day-heading: #a9afc3;
+        --color-text-agenda-sub: #58595a;
+        --color-text-speaker-name: #434242;
+        --color-text-speaker-title: #737171;
+        --color-text-abstract-body: #494848;
+
+        --avatar-0: #1c1565;
+        --avatar-1: #035385;
+        --avatar-2: #c1272d;
+        --avatar-3: #0b8a51;
+        --avatar-4: #073cb4;
+        --avatar-5: #9c3f99;
+        --avatar-6: #5a4a9c;
+      }
+
+      body {
+        font-family: "Host Grotesk", sans-serif;
+        background: var(--color-bg-page);
+        margin: 0;
+      }
+
+      /* ── Avatars ───────────────────────────────────────────────────
+         Classes for rendering speaker images or fallback colored initials.
+      */
+      .speaker-avatar {
+        border-radius: 50%;
+        object-fit: cover;
+      }
+      .speaker-avatar-initials {
+        border-radius: 50%;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+      }
+
+      /* ── Speaker Cards ──────────────────────────────────────────────
+         Cards feature a 'squircle' design with a pronounced top-right
+         corner radius (8px 60px 8px 8px) and a cyan drop-shadow on hover.
+      */
+      .cSpeakerCard {
+        border-radius: 8px 60px 8px 8px;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 4px 12px var(--color-shadow-10);
+      }
+      .cSpeakerCard:hover {
+        transform: translateY(-4px) !important;
+        box-shadow: 0 0 20px var(--color-cyan) !important;
+      }
+
+      .cSpeakerLinkedin {
+        color: var(--color-navy);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .cSpeakerLinkedin:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="speaker-root">
+      <section class="cWhiteBG">
+        <div class="container">
+          <div class="row">
+            <div class="col-sm-12 col-md-12 col-lg-12">
+              <div class="Twoh2" style="padding-top: 2rem;">
+                <h1 style="color: var(--color-navy); font-weight: 700; font-size: 3.4rem; margin: 0;">Speakers</h1>
+                <h3 style="margin-top: 9px; font-size: 2.1rem !important; color: var(--color-text-agenda-sub); font-weight: 300;">%%TAGLINE%%</h3>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="speaker-content" class="pb-5">%%SPEAKER_CONTENT%%</div>
+    </div>
+
+    <!-- Bootstrap drives the biography modals (data-bs-toggle). -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+      crossorigin="anonymous"
+    ></script>
+  </body>
+</html>

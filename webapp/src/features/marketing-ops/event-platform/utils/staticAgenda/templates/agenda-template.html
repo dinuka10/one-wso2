@@ -1,0 +1,1411 @@
+<!--
+ ~ Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
+ ~
+ ~ WSO2 LLC. licenses this file to you under the Apache License,
+ ~ Version 2.0 (the "License"); you may not use this file except
+ ~ in compliance with the License.
+ ~ You may obtain a copy of the License at
+ ~
+ ~ http://www.apache.org/licenses/LICENSE-2.0
+ ~
+ ~ Unless required by applicable law or agreed to in writing,
+ ~ software distributed under the License is distributed on an
+ ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ ~ KIND, either express or implied.  See the License for the
+ ~ specific language governing permissions and limitations
+ ~ under the License.
+ ~
+ ~ The public agenda page's shell, from the source's public/agenda-template.html
+ ~ minus its drop zone and its render script: renderAgenda.ts builds the markup
+ ~ that fills the %%…%% slots and runtime.js is inlined at the end. This comment
+ ~ is stripped from the built page.
+ -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>%%TITLE%%</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+      crossorigin="anonymous"
+    />
+    <style>
+      :root {
+        --bs-gutter-x: 15px;
+
+        /* Brand core */
+        --color-navy: #1c1565;
+        --color-blue-deep: #035385;
+        --color-cyan: #08efe2;
+        --color-white: #ffffff;
+        --color-black: #000000;
+
+        /* Brand orange (CTA button + its gradient) */
+        --color-orange-gradient-start: #f05a24;
+        --color-orange-gradient-end: #f6921e;
+        --color-orange-cta: #ff6700;
+        --color-orange-cta-bg: #ff670017;
+
+        --color-red-error: #ff6b6b;
+        --color-bg-page: #f7f8fb;
+
+        /* White tints (drop zone / reset button / keynote bar) */
+        --color-white-04: rgba(255, 255, 255, 0.04);
+        --color-white-12: rgba(255, 255, 255, 0.12);
+        --color-white-20: rgba(255, 255, 255, 0.2);
+        --color-white-25: rgba(255, 255, 255, 0.25);
+        --color-white-60: rgba(255, 255, 255, 0.6);
+        --color-white-80: rgba(255, 255, 255, 0.8);
+
+        /* Cyan tints (drop zone accents) */
+        --color-cyan-06: rgba(8, 239, 226, 0.06);
+        --color-cyan-08: rgba(8, 239, 226, 0.08);
+        --color-cyan-20: rgba(8, 239, 226, 0.2);
+        --color-cyan-60: rgba(8, 239, 226, 0.6);
+        --color-cyan-75: rgba(8, 239, 226, 0.75);
+
+        --color-navy-44: #1c156570;
+
+        /* Shadows */
+        --color-shadow-09: rgba(0, 0, 0, 0.09);
+        --color-shadow-10: rgba(0, 0, 0, 0.1);
+        --color-shadow-20: rgba(0, 0, 0, 0.2);
+
+        --color-border-slate: #475e7e;
+        --color-border-card: #e3dfdf;
+        --color-border-day-heading: #a9afc3;
+        --color-text-dark-gray: #333333;
+        --color-text-agenda-sub: #58595a;
+
+        /* Break bar */
+        --color-text-break-bar: #656363;
+
+        /* Time bar */
+        --color-bg-time-bar: #e7ebf5;
+        --color-text-time-bar: #4b4848;
+
+        /* Card text greys */
+        --color-text-time-set: #747373;
+        --color-bg-hover-abstract: #f6f4f4;
+        --color-text-speaker-name: #434242;
+        --color-text-speaker-title: #737171;
+        --color-text-keynote-room: #9104f5;
+
+        /* Modal / popup */
+        --color-text-popup-time: #656464;
+        --color-bg-abstract-popup: #f4f4f4;
+        --color-border-abstract-popup: #eaeaea;
+        --color-text-abstract-body: #494848;
+
+        /* Activity accent classes. The export no longer sends a per-session
+         accent (see renderActivityBar), so span.cDarkBlue is what an activity
+         gets; cDarkPurple is kept for hand-authored markup. */
+        --color-activity-dark-blue: var(--color-navy);
+        --color-activity-dark-purple: var(--color-navy);
+
+        /* Track palette slots — one per name in the colour token vocabulary
+         (027_color_tokens.sql, widened by 030_orange_color_token.sql: red,
+         orange, yellow, green, blue, purple, dark-blue, main), named by hue
+         so a slot and the token the export resolved to it
+         can't drift apart unnoticed. The export sends only the token name;
+         what each one looks like is decided entirely here. */
+        --palette-red-bg: #c1272c26;
+        --palette-red-text: #c1272d;
+        --palette-red-border: rgba(193, 39, 44, 0.27);
+        --palette-red-chip-border: var(--palette-red-text);
+
+        --palette-orange-bg: rgba(238, 123, 48, 0.13);
+        --palette-orange-text: #b85c10;
+        --palette-orange-border: rgba(238, 123, 48, 0.3);
+        --palette-orange-chip-border: var(--palette-orange-text);
+
+        --palette-yellow-bg: rgb(251 177 59 / 16%);
+        --palette-yellow-text: rgb(203 127 5);
+        --palette-yellow-border: rgba(251, 177, 59, 0.31);
+        --palette-yellow-chip-border: rgb(251 177 59 / 89%);
+
+        --palette-green-bg: rgba(34, 181, 115, 0.1);
+        --palette-green-text: #0b8a51;
+        --palette-green-border: #0b8a5138;
+        --palette-green-chip-border: var(--palette-green-text);
+
+        --palette-blue-bg: rgb(0 143 232 / 10%);
+        --palette-blue-text: #073cb4;
+        --palette-blue-border: rgba(0, 143, 232, 0.29);
+        --palette-blue-chip-border: var(--palette-blue-text);
+
+        --palette-purple-bg: rgba(145, 4, 245, 0.1);
+        --palette-purple-text: #9104f5;
+        --palette-purple-border: rgba(145, 4, 245, 0.3);
+        --palette-purple-chip-border: var(--palette-purple-text);
+
+        --palette-dark-blue-bg: rgba(28, 21, 101, 0.1);
+        --palette-dark-blue-text: #1c1565;
+        --palette-dark-blue-border: rgba(28, 21, 101, 0.3);
+        --palette-dark-blue-chip-border: var(--palette-dark-blue-text);
+
+        /* `main` is the default token: what a room or track with no colour of
+         its own resolves to. Neutral by design, so an unthemed column reads
+         as deliberately plain rather than as some other track's hue. */
+        --palette-main-bg: rgba(146, 151, 175, 0.12);
+        --palette-main-text: #5a6076;
+        --palette-main-border: rgba(146, 151, 175, 0.31);
+        --palette-main-chip-border: var(--palette-main-text);
+
+        /* Initials-fallback avatar backgrounds — avatarClass() hashes the
+         speaker's name onto one of these. */
+        --avatar-0: #1c1565;
+        --avatar-1: #035385;
+        --avatar-2: #c1272d;
+        --avatar-3: #0b8a51;
+        --avatar-4: #073cb4;
+        --avatar-5: #9c3f99;
+        --avatar-6: #5a4a9c;
+
+        /* Only backstops copy we don't otherwise theme — every element here
+         that reads it already sets its own color. */
+        --color-text-900: var(--color-text-abstract-body);
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      /* Titles come out of a Quill editor and can arrive wrapped in <p>.
+       inlineHtml() unwraps block tags before insertion, but rich inline
+       markup (and any future path that doesn't flatten) would otherwise let
+       the global `p` rule above win inside a heading — a 1.1rem navy session
+       title would silently render as 1rem/1.6rem body copy with a 1.5rem
+       bottom margin. Neutralize <p> wherever it lands inside a heading so it
+       always inherits the heading's own typography.
+       Inline font-weight:…!important from normalizeFontWeight() still wins. */
+      h1 p,
+      h2 p,
+      h3 p,
+      h4 p,
+      h5 p,
+      h6 p {
+        font: inherit;
+        color: inherit;
+        letter-spacing: inherit;
+        word-spacing: inherit;
+        margin: 0;
+      }
+
+      body {
+        font-family: "Host Grotesk", sans-serif;
+        background: var(--color-bg-page);
+        margin: 0;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6,
+      p,
+      li,
+      span,
+      a,
+      button,
+      input {
+        font-family: "Host Grotesk", sans-serif !important;
+      }
+
+      /* ── Agenda tab bar (title + day tabs + track filter) ────
+       Sits in normal flow, matching the live WSO2Con markup exactly
+       (col-lg-3 / col-lg-7 / col-lg-2 — see frontend/.claude/source.html).
+       The scroll listener near the bottom of the page script toggles the
+       `.fixed` class once the user scrolls past it, same as the live site. */
+      .cAgenda {
+        background: var(--color-bg-page);
+        z-index: 999;
+        padding-top: 9rem;
+        padding-bottom: 2rem;
+      }
+
+      .cWhiteBG {
+        background: var(--color-white);
+      }
+
+      .cAgenda h1 {
+        color: var(--color-navy);
+        line-height: 3.4rem;
+        font-weight: 700;
+        font-size: 3.4rem;
+        /* No margins: align-items-center centres the column boxes, so any margin
+         on the title shifts the text off-centre from the tabs beside it. */
+        margin: 0;
+      }
+
+      .cAgenda p {
+        font-size: 1.1rem;
+        margin-bottom: 0;
+        font-weight: 300;
+        color: var(--color-text-agenda-sub);
+        line-height: 1.7rem;
+      }
+
+      .cAgenda .nav-tabs {
+        border: 0;
+        margin: 0;
+        padding: 0;
+        align-items: center;
+        /* Gap instead of per-link bottom margin, which would leave the wrapped
+         rows bottom-heavy and break the vertical centring. */
+        row-gap: 5px;
+      }
+
+      .cAgenda .nav-tabs .nav-link {
+        border-radius: 320px;
+        font-size: 1.1rem;
+        letter-spacing: 0;
+        padding: 0.5rem 1.5rem;
+        margin: 0 10px;
+        color: var(--color-white);
+        background-color: var(--color-navy);
+        border: 0;
+        text-decoration: none;
+        cursor: default;
+        transition: background-color 0.15s, color 0.15s;
+      }
+
+      .cAgenda .nav-tabs .nav-link:hover {
+        color: var(--color-cyan);
+      }
+
+      .cAgenda .nav-tabs .nav-link.active {
+        color: var(--color-white);
+      }
+
+      .cTrackFilter {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+      }
+
+      .dropdown-box {
+        position: relative;
+        font-family: sans-serif;
+        width: 220px;
+      }
+
+      .dropdown-box select {
+        padding: 7px 12px;
+        border: 1px solid var(--color-navy-44);
+        border-radius: 320px;
+        background-color: var(--color-white);
+        font-size: 14px;
+        color: var(--color-text-dark-gray);
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        cursor: pointer;
+        width: 100%;
+      }
+
+      .dropdown-box::after {
+        content: "▾";
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        transform: translateY(-50%);
+        font-size: 22px;
+        color: var(--color-navy);
+        pointer-events: none;
+      }
+
+      /* ── Fixed state (scrolled) ───────────────────────────────
+       Toggled by the scroll listener defined alongside render() below. */
+      .cAgenda.fixed {
+        position: fixed;
+        top: 69px;
+        left: 0;
+        width: 100%;
+        background-color: var(--color-navy);
+        box-shadow: 0 2px 5px var(--color-shadow-10);
+        padding: 10px 0;
+        border-top: 1px solid var(--color-border-slate);
+      }
+
+      .cAgenda.fixed h1 {
+        margin-bottom: 0;
+        line-height: 3.2rem;
+        font-size: 2.4rem;
+        color: var(--color-white);
+      }
+
+      .cAgenda.fixed .nav-tabs .nav-link {
+        background-color: var(--color-cyan);
+        color: var(--color-navy);
+        margin-top: 3px;
+      }
+
+      .cAgenda.fixed .nav-tabs .nav-link:hover {
+        color: var(--color-white);
+      }
+
+      .cAgenda.fixed .nav-tabs .nav-link.active {
+        background-color: var(--color-cyan);
+        color: var(--color-navy);
+        border: solid 1px var(--color-cyan);
+      }
+
+      .cAgenda.fixed .dropdown-box select {
+        border: 0;
+      }
+
+      @media (max-width: 1170px) {
+        .cAgenda .nav-tabs .nav-link {
+          font-size: 1rem;
+          padding: 0.5rem 1rem;
+        }
+      }
+
+      @media (max-width: 647px) {
+        ul.nav-tabs {
+          margin-left: 10px;
+          margin-bottom: 6px;
+        }
+      }
+
+      @media (max-width: 512px) {
+        .cAgenda {
+          padding-top: 7rem;
+        }
+
+        .cAgenda h1 {
+          font-size: 2.8rem;
+          line-height: 3rem;
+          margin-top: 0;
+        }
+
+        .cAgenda.fixed {
+          padding: 20px 0;
+        }
+
+        .cAgenda.fixed h1 {
+          font-size: 2rem;
+          line-height: 3rem;
+        }
+
+        .nav-tabs .nav-link {
+          margin: 5px 5px;
+        }
+
+        .cAgenda .nav-tabs .nav-link,
+        .cAgenda.fixed .nav-tabs .nav-link {
+          font-size: 0.9rem;
+          padding: 0.3rem 0.8rem;
+          letter-spacing: 0;
+          font-weight: 500;
+        }
+      }
+
+      @media (max-width: 398px) {
+        .cAgenda .nav-tabs .nav-link,
+        .cAgenda.fixed .nav-tabs .nav-link {
+          font-size: 0.8rem;
+          padding: 0.3rem 0.5rem;
+        }
+      }
+
+      @media (max-width: 340px) {
+        .cAgenda .nav-tabs .nav-link {
+          font-size: 0.7rem;
+          padding: 0.3rem 0.5rem;
+        }
+      }
+
+      /* ── Bookmark ──────────────────────────────────────────── */
+      .cBookmark {
+        display: block;
+        height: 0;
+        visibility: hidden;
+        /* Live site pulls the anchor up with margin-top:-200px on an absolutely
+         positioned span; same 200px offset, expressed so it survives this
+         page's normal-flow anchor. */
+        scroll-margin-top: 200px;
+      }
+
+      /* ── Day heading (live .cNameBlock h2) ─────────────────── */
+      .day-heading {
+        color: var(--color-black);
+        font-size: 2rem;
+        font-weight: 400;
+        line-height: 2.8rem;
+        margin-bottom: 0;
+        padding-bottom: 0.5rem;
+        letter-spacing: 1px;
+        border-bottom: 1px solid var(--color-border-day-heading);
+      }
+
+      @media (max-width: 647px) {
+        .day-heading {
+          font-size: 1.5rem;
+        }
+      }
+
+      /* ── Track columns (matches live WSO2Con markup: plain Bootstrap .row of
+       .col-lg-N columns, one per track, each just stacking its own
+       SessionBlocks in normal flow) — columns still lay out independently in
+       markup/CSS; syncTrackColumnHeights() levels each stacked SessionBlock
+       against its counterpart in sibling columns after render (see script). */
+      .track-column {
+        margin-bottom: 1.5rem;
+      }
+
+      .cTrackBand {
+        border-radius: 8px 8px 0 0;
+      }
+
+      /* index.css sets the track colour on `.cRedTrack p` itself; here it lives
+       on the wrapper (.track-palette-*) and reaches the <p> by inheritance —
+       which the global `li,p,label,select` colour would beat, since a rule on
+       the element always wins over an inherited value. Same trap as
+       .LocationSet span below. */
+      .cTrackBand p {
+        color: inherit;
+        padding: 10px 22px;
+        margin-bottom: 0;
+        margin-top: 0;
+        font-weight: 500;
+        line-height: 1.4rem;
+        display: inline-block;
+        width: 100%;
+        font-size: 1rem;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+      }
+
+      @media (max-width: 1440px) {
+        .cTrackBand p {
+          font-size: 0.85rem;
+        }
+      }
+
+      /* ── Track colour system ─────────────────────────────────
+       One slot per colour token the export can assign (colorClass:
+       "palette-red", "palette-dark-blue", "palette-main", …). Three shapes
+       read the same slot: .track-palette-* tints the band above a column,
+       .chip-palette-* is the section chip in the session modal, and
+       .track-text-palette-* tints text only (the room line in a card footer).
+       Recolour a track by editing --palette-*-* in :root — nothing here or in
+       the JSON changes. All eight tokens need a slot in each of the three
+       shapes; a token with no slot renders unstyled. */
+      .track-palette-red {
+        background: var(--palette-red-bg);
+        color: var(--palette-red-text);
+        border: 1px solid var(--palette-red-border);
+      }
+
+      .track-palette-orange {
+        background: var(--palette-orange-bg);
+        color: var(--palette-orange-text);
+        border: 1px solid var(--palette-orange-border);
+      }
+
+      .track-palette-yellow {
+        background: var(--palette-yellow-bg);
+        color: var(--palette-yellow-text);
+        border: 1px solid var(--palette-yellow-border);
+      }
+
+      .track-palette-green {
+        background: var(--palette-green-bg);
+        color: var(--palette-green-text);
+        border: 1px solid var(--palette-green-border);
+      }
+
+      .track-palette-blue {
+        background: var(--palette-blue-bg);
+        color: var(--palette-blue-text);
+        border: 1px solid var(--palette-blue-border);
+      }
+
+      .track-palette-purple {
+        background: var(--palette-purple-bg);
+        color: var(--palette-purple-text);
+        border: 1px solid var(--palette-purple-border);
+      }
+
+      .track-palette-dark-blue {
+        background: var(--palette-dark-blue-bg);
+        color: var(--palette-dark-blue-text);
+        border: 1px solid var(--palette-dark-blue-border);
+      }
+
+      .track-palette-main {
+        background: var(--palette-main-bg);
+        color: var(--palette-main-text);
+        border: 1px solid var(--palette-main-border);
+      }
+
+      .chip-palette-red,
+      .chip-palette-orange,
+      .chip-palette-yellow,
+      .chip-palette-green,
+      .chip-palette-blue,
+      .chip-palette-purple,
+      .chip-palette-dark-blue,
+      .chip-palette-main {
+        padding: 3px 10px;
+        border-left-style: solid;
+        border-left-width: 5px;
+      }
+
+      .chip-palette-red {
+        background: var(--palette-red-bg);
+        color: var(--palette-red-text);
+        border-left-color: var(--palette-red-chip-border);
+      }
+
+      .chip-palette-orange {
+        background: var(--palette-orange-bg);
+        color: var(--palette-orange-text);
+        border-left-color: var(--palette-orange-chip-border);
+      }
+
+      .chip-palette-yellow {
+        background: var(--palette-yellow-bg);
+        color: var(--palette-yellow-text);
+        border-left-color: var(--palette-yellow-chip-border);
+      }
+
+      .chip-palette-green {
+        background: var(--palette-green-bg);
+        color: var(--palette-green-text);
+        border-left-color: var(--palette-green-chip-border);
+      }
+
+      .chip-palette-blue {
+        background: var(--palette-blue-bg);
+        color: var(--palette-blue-text);
+        border-left-color: var(--palette-blue-chip-border);
+      }
+
+      .chip-palette-purple {
+        background: var(--palette-purple-bg);
+        color: var(--palette-purple-text);
+        border-left-color: var(--palette-purple-chip-border);
+      }
+
+      .chip-palette-dark-blue {
+        background: var(--palette-dark-blue-bg);
+        color: var(--palette-dark-blue-text);
+        border-left-color: var(--palette-dark-blue-chip-border);
+      }
+
+      .chip-palette-main {
+        background: var(--palette-main-bg);
+        color: var(--palette-main-text);
+        border-left-color: var(--palette-main-chip-border);
+      }
+
+      .track-text-palette-red {
+        color: var(--palette-red-text);
+      }
+
+      .track-text-palette-orange {
+        color: var(--palette-orange-text);
+      }
+
+      .track-text-palette-yellow {
+        color: var(--palette-yellow-text);
+      }
+
+      .track-text-palette-green {
+        color: var(--palette-green-text);
+      }
+
+      .track-text-palette-blue {
+        color: var(--palette-blue-text);
+      }
+
+      .track-text-palette-purple {
+        color: var(--palette-purple-text);
+      }
+
+      .track-text-palette-dark-blue {
+        color: var(--palette-dark-blue-text);
+      }
+
+      .track-text-palette-main {
+        color: var(--palette-main-text);
+      }
+
+      /* Wraps a keynote section's header + stacked items into one block, full
+       width, stacked in normal flow like everything else here. */
+      .keynote-section-box {
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Break indicator (live .cBreakTime h4) ───────────────
+       The heading, not the wrapper, carries the padding on the live site. */
+      .cBreakBar h3 {
+        padding: 20px 20px 0;
+        font-size: 1.4rem;
+        color: var(--color-text-break-bar);
+        margin-bottom: 0.5rem;
+        margin-top: 0.5rem;
+        /* The live element is an h4, so these come from the global h4 rule —
+         restated because this one is an h3 to keep the heading outline gapless. */
+        font-weight: 400;
+        line-height: 1.8rem;
+        word-spacing: 3px;
+        letter-spacing: 0.008rem;
+      }
+
+      /* Same Quill <p> wrapper problem as .cTimeBar h5 below. */
+      .cBreakBar h3 p {
+        display: inline;
+        margin: 0;
+      }
+
+      /* ── Timeslot footnote ───────────────────────────────────── */
+      /* A day-wide organizer comment pinned to a slot, carried in the export as
+       a zero-duration kind='footnote' entry. Deliberately quieter than a
+       break bar: it annotates the time band rather than filling it. */
+      .cFootnote {
+        padding: 6px 0px;
+        color: var(--color-text-break-bar);
+      }
+
+      .cFootnote .cFootnoteTime {
+        font-style: normal;
+        color: var(--color-navy);
+        margin-right: 6px;
+      }
+
+      span.cDarkBlue {
+        color: var(--color-activity-dark-blue);
+      }
+
+      span.cDarkPurple {
+        color: var(--color-activity-dark-purple);
+      }
+
+      /* ── Keynote section header (matches live WSO2Con markup) ─ */
+      .cTimeBar {
+        background-color: var(--color-bg-time-bar);
+        border-radius: 8px;
+        padding: 10px 20px;
+        margin-bottom: 17px;
+        margin-top: 20px;
+      }
+
+      /* Time-band/keynote/break bars sit directly under the day h2, so their
+       label is an h3 (not the h5 the live site uses) to keep the heading
+       outline gapless. Activity bars keep the live site's h5 because they
+       carry a title, and an h3 there would read as a section heading. */
+      .cTimeBar h3,
+      .cTimeBar h5 {
+        color: var(--color-text-time-bar);
+        margin-bottom: 0;
+        font-size: 1.4rem;
+      }
+
+      /* The live bar's label is an h5; the h3 variant has to restate the global
+       h5 metrics it doesn't inherit (global h3 is 2.3rem/.008rem/3px instead). */
+      .cTimeBar h3 {
+        line-height: 1.6rem;
+        font-weight: 500;
+        letter-spacing: 0.05rem;
+        word-spacing: normal;
+      }
+
+      .cKeyNoteBar {
+        background: linear-gradient(
+          90deg,
+          var(--color-navy) 52%,
+          var(--color-cyan) 100%
+        );
+        border: 0;
+        padding: 1rem 1.5rem !important;
+        margin-top: 20px;
+      }
+
+      .cKeyNoteBar span {
+        font-weight: 300 !important;
+        font-size: 1.6rem !important;
+        letter-spacing: 3px;
+        color: var(--color-white);
+      }
+
+      /* Live site sets colour only — size/weight/tracking stay at the global h5
+       defaults, and only the nested <span> (the section label) scales up. */
+      .cKeyNoteBar h5 {
+        color: var(--color-white);
+      }
+
+      /* ── Keynote block (matches live WSO2Con SessionBlock.cKeynoteBlock) ── */
+      .SessionBlock {
+        background: var(--color-white);
+        padding: 1.5rem;
+        box-shadow: 2px 2px 8px 0 var(--color-shadow-09);
+        border: 1px solid var(--color-border-card);
+        width: 100%;
+      }
+
+      /* Push the room/artifact footer (.cCardFooter) to the bottom of the card
+       via margin-top:auto below, regardless of how tall the card ends up
+       (its own speaker-height class, or syncTrackColumnHeights leveling it
+       against taller siblings). Not applied to the keynote variant —
+       cKeynoteBlock is a completely different bootstrap-.row-based layout
+       with no bottom footer at all. */
+      .SessionBlock:not(.cKeynoteBlock) {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .cCardFooter {
+        margin-top: auto;
+      }
+
+      /* A 'vari' card (two short sessions merged into one SessionBlock, see
+       renderSessionStack) is its own mini flex column so its footer sticks
+       to the bottom of its own slot, same idea as .SessionBlock above. */
+      .cVariCard {
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* The last vari card in a group grows to absorb any extra height added
+       when the whole group's SessionBlock gets stretched taller than its
+       natural content by syncTrackColumnHeights, so its footer (via
+       .cCardFooter above) lands at the group's true bottom edge. */
+      .cVariGrow {
+        flex: 1 1 auto;
+      }
+
+      /* A linked last-in-group vari session wraps its card in an <a> (see
+       renderSessionCard) — display:contents makes that wrapper transparent
+       to layout so the card inside it (which carries the same .cVariGrow
+       class) grows exactly as if it were the direct child of the group's
+       SessionBlock. */
+      .SessionBlock > a.cVariGrow {
+        display: contents;
+      }
+
+      /* Bootstrap's .row carries a -12px gutter margin so it can cancel out
+       its columns' own padding. Every column here already has that padding
+       stripped via .p-0, so the negative margin has nothing to cancel and
+       instead eats straight into the SessionBlock's own 1.5rem padding —
+       and nested rows (e.g. the vari card's outer row plus its footer row)
+       compound this until content sits almost flush against the edge.
+       Zeroing it here keeps every row's content flush with the padding. */
+      .SessionBlock .row {
+        margin-left: 0;
+        margin-right: 0;
+      }
+
+      .SessionBlock h3 {
+        font-size: 1.1rem !important;
+        color: var(--color-navy) !important;
+        font-weight: 500 !important;
+        line-height: 1.5rem !important;
+        padding: 0.5rem 0 0;
+        min-height: 100px;
+        margin-bottom: 0;
+      }
+
+      .SessionBlock h3 p {
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      /* No description and no speaker bios — nothing to show in a modal */
+      .SessionBlock.not-clickable {
+        cursor: default;
+      }
+
+      /* cKeynoteBlock also carries Bootstrap's .row class (needed for its
+       time/room columns to sit side by side) but the block already lives
+       inside a grid column of its own, so .row's negative side margins
+       would just bleed the visible card past that column instead of
+       lining it up with every other SessionBlock. */
+      .cKeynoteBlock {
+        width: 100%;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        margin-left: 0;
+        margin-right: 0;
+      }
+
+      /* Higher specificity than the plain .SessionBlock h3 rule above (which
+       reserves 100px to align regular track cards in a grid row) — keynotes
+       span full width with no neighbors to align to, so the title should
+       only take the height its text needs. */
+      .SessionBlock.cKeynoteBlock h3 {
+        font-size: 1.1rem;
+        color: var(--color-navy);
+        font-weight: 500;
+        line-height: 1.5rem;
+        padding: 0.5rem 0 0;
+        margin-bottom: 15px;
+        min-height: auto;
+      }
+
+      .SessionBlock.cKeynoteBlock h3 p {
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .TimeSet {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23747373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-size: 18px;
+        background-position: left 2px top 5px;
+        padding-left: 27px;
+      }
+
+      .TimeSet span {
+        font-size: 0.9rem;
+        color: var(--color-text-time-set);
+        font-family: "Plus Jakarta Sans", sans-serif !important;
+      }
+
+      .LocationSet {
+        height: 25px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23747373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-size: 18px;
+        background-position: left 2px;
+        padding-left: 27px;
+      }
+
+      /* No color here — renderCardFooter() puts .track-text-palette-N on the
+       .LocationSet div itself and this span inherits it. A hardcoded color
+       here would win over that (a rule targeting an element directly always
+       beats an inherited value, regardless of the ancestor's specificity),
+       silently graying out every room regardless of track. */
+      .LocationSet span {
+        font-size: 1 rem;
+      }
+
+      @media (max-width: 768px) {
+        .LocationSet span {
+          font-size: 0.8rem;
+        }
+      }
+
+      /* Keynotes have no single track to color by, so force the same fixed
+       blue as the rest of their card (cKeynoteTheme is added alongside LocationSet
+       only for the keynote variant — see renderKeynoteItem). */
+      .cKeynoteTheme span {
+        color: var(--color-text-keynote-room);
+      }
+
+      .cKeynoteSpeaker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .cKeynoteSpeaker img {
+        filter: grayscale(1);
+        width: 65px;
+        height: 65px;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+
+      .cKeynoteSpeaker img:hover {
+        filter: none;
+      }
+
+      /* ── Session block (matches live WSO2Con SessionBlock markup exactly —
+       see frontend/.claude/source.html). Title styling lives in the single
+       .SessionBlock h3 rule above. ── */
+      /* index.css narrows the global 1rem hr margins page-wide, not just inside
+       session cards — keep it unscoped so keynote and vari separators match. */
+      hr {
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+
+      @media (max-width: 992px) {
+        .SessionBlock {
+          margin-bottom: 10px;
+        }
+      }
+
+      .cTopBorderZero {
+        border-top: 0;
+      }
+
+      .cAbstractBlock {
+        cursor: pointer;
+      }
+
+      .cAbstractBlock:hover {
+        background-color: var(--color-bg-hover-abstract);
+      }
+
+      /* Speaker name/title sit under the h3 session title, so they render as
+       h4/h5 (the live site's h5/h6 would skip a level) — styles unchanged. */
+      /* Live markup carries inline margin-bottom:0 on every one of these. */
+      .cSpeaker {
+        margin-bottom: 0;
+      }
+
+      .cSpeaker h5 {
+        line-height: 1.05rem;
+        margin-bottom: 0;
+        font-size: 0.9rem;
+        color: var(--color-text-speaker-name);
+        font-weight: 400;
+        margin-top: 3px;
+      }
+
+      .cSpeaker h6 {
+        font-size: 0.8rem;
+        color: var(--color-text-speaker-title);
+        line-height: 1rem;
+        font-weight: 400;
+        margin-top: 3px;
+        font-family: "Plus Jakarta Sans", sans-serif !important;
+      }
+
+      .cAgendaSpeaker img {
+        filter: grayscale(1);
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+
+      .cAgendaSpeaker img:hover {
+        filter: none;
+      }
+
+      /* Not in the live CSS — sponsor/company logos there get a bespoke inline
+       width per speaker, hand-tuned per session. companyLogoSize /
+       modalCompanyLogoSize carry that per-logo override now; this box is the
+       fallback for speakers that set neither. */
+      .Logo {
+        max-width: 100%;
+        max-height: 30px;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        display: block;
+      }
+
+      .speaker-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+
+      .speaker-avatar-initials {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--color-white);
+        flex-shrink: 0;
+      }
+
+      /* One class per avatar slot — avatarClass() picks by name hash. */
+      .avatar-0 {
+        background: var(--avatar-0);
+      }
+
+      .avatar-1 {
+        background: var(--avatar-1);
+      }
+
+      .avatar-2 {
+        background: var(--avatar-2);
+      }
+
+      .avatar-3 {
+        background: var(--avatar-3);
+      }
+
+      .avatar-4 {
+        background: var(--avatar-4);
+      }
+
+      .avatar-5 {
+        background: var(--avatar-5);
+      }
+
+      .avatar-6 {
+        background: var(--avatar-6);
+      }
+
+      /* Card floor scales with speaker count — matches CON_STYLING.md §9's
+       speaker-height model exactly (see frontend/.claude/source.html). */
+      .cOneSpeakerHight {
+        min-height: 81px;
+      }
+
+      .cTwoSpeakerHight {
+        min-height: 145px;
+      }
+
+      .cThreeSpeakerHight {
+        min-height: 288px;
+      }
+
+      .cFourSpeakerHight {
+        min-height: 311px;
+      }
+
+      .cFiveSpeakerHight {
+        min-height: 386px;
+      }
+
+      .cVariSpeakerHight {
+        min-height: 204px;
+      }
+
+      @media (max-width: 768px) {
+        .cOneSpeakerHight,
+        .cTwoSpeakerHight,
+        .cThreeSpeakerHight,
+        .cFourSpeakerHight,
+        .cFiveSpeakerHight,
+        .cVariSpeakerHight {
+          min-height: auto;
+        }
+      }
+
+      .cLinkCTA {
+        background-color: var(--color-orange-cta-bg);
+        color: var(--color-orange-cta);
+        padding: 4px 14px;
+        border-radius: 320px;
+        text-decoration: none;
+        width: auto;
+        display: inline-block;
+        border: solid 2px var(--color-orange-cta);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
+
+      @media (max-width: 768px) {
+        .cLinkCTA {
+          padding: 4px 10px;
+          font-weight: 800;
+          font-size: 9px;
+        }
+      }
+
+      /* ── Modal — matches the live WSO2Con session popup markup exactly
+       (see frontend/.claude/source.html) rather than a bespoke design ── */
+      /* The fixed header (z-index 99999) and sticky day-tab bar (z-index 9999)
+       otherwise paint over the top of the modal once margin-top pushes its
+       content down into their band. */
+      .modal {
+        z-index: 100001;
+      }
+
+      .modal-backdrop {
+        z-index: 100000;
+      }
+
+      .modal.show .modal-dialog {
+        margin-top: 5rem;
+      }
+
+      .modal-content {
+        border-radius: 12px;
+        border: none;
+      }
+
+      .modal-body {
+        padding: 4rem;
+      }
+
+      .modal-dialog {
+        max-width: 880px !important;
+      }
+
+      .cBlockAbstract {
+        margin-bottom: 1rem;
+      }
+
+      .cBlockAbstract .row {
+        padding-bottom: 3rem;
+      }
+
+      /* Session title now lives in the doc's modal-header (§11) rather than
+       inline in the body — keep the same navy/cyan-underline treatment. */
+      .modal-header-area {
+        position: relative;
+        padding: 1rem 0;
+        margin-bottom: 0.5rem;
+      }
+
+      /* Live site floats this right and pulls it up 21px into the modal's own
+       padding; absolute positioning gets the same spot out of the header area. */
+      /* Self-contained: the host page's own .btn-close rules win over
+       Bootstrap's --bs-btn-close-bg shorthand, leaving an invisible button.
+       Paint the glyph here instead of inheriting it. */
+      .modal-header-area .btn-close {
+        position: absolute;
+        top: -21px;
+        right: 0;
+        box-sizing: content-box !important;
+        width: 1em !important;
+        height: 1em !important;
+        padding: 0.25em !important;
+        border: 0 !important;
+        border-radius: 0.375rem !important;
+        opacity: 1 !important;
+        filter: none !important;
+        background: transparent
+          url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%231c1565'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3e%3c/svg%3e")
+          center / 1em auto no-repeat !important;
+      }
+
+      .modal-header-area .btn-close:hover {
+        opacity: 0.7 !important;
+      }
+
+      .modal-title {
+        font-size: 1.3rem;
+        color: var(--color-navy);
+        line-height: 2rem;
+        font-weight: 600;
+        border-bottom: solid 1px var(--color-cyan);
+        padding-bottom: 1rem;
+      }
+
+      .modal-title p {
+        margin-bottom: 0;
+      }
+
+      .cTrackPopup {
+        text-align: center;
+        display: inline-block;
+        margin-bottom: 24px;
+        margin-right: 8px;
+        padding: 3px 10px;
+      }
+
+      /* Colour inherited from .chip-palette-N — see .cTrackBand p. */
+      .cTrackPopup p {
+        color: inherit;
+        margin-bottom: 0;
+      }
+
+      .TimeSetPopup {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23747373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-size: 18px;
+        background-position: left 2px top 5px;
+        padding-left: 27px;
+        margin-bottom: 20px;
+      }
+
+      .TimeSetPopup span {
+        font-size: 1rem;
+        color: var(--color-text-popup-time);
+        font-family: "Plus Jakarta Sans", sans-serif !important;
+      }
+
+      .PoPAbstract {
+        display: inline-block;
+        padding: 1.5rem;
+        background-color: var(--color-bg-abstract-popup);
+        border: solid 1px var(--color-border-abstract-popup);
+        border-radius: 10px;
+        margin-bottom: 2rem;
+      }
+
+      /* Bio/abstract copy is body text, not a heading — the live site's h5
+       markup becomes p.cBioText here so the modal outline stays gapless
+       (h2 title → h3 speaker name → h4 speaker title). */
+
+      .PoPAbstract p {
+        margin-bottom: 2rem;
+        font-size: 1rem;
+        line-height: 1.6rem;
+        font-weight: 300;
+        color: var(--color-text-abstract-body);
+        word-spacing: 3px;
+        letter-spacing: 0.008rem;
+      }
+
+      .PoPAbstract > :last-child {
+        margin-bottom: 0;
+      }
+
+      .modal-body .cBioText {
+        font-size: 1rem;
+        line-height: 1.6rem;
+        font-weight: 300;
+        color: var(--color-text-abstract-body);
+        word-spacing: 3px;
+        letter-spacing: 0.008rem;
+        margin-bottom: 0;
+      }
+
+      .cSpeakerSide img {
+        border-radius: 50%;
+        width: 85px;
+        height: 85px;
+      }
+
+      .cSpeakerSide h3 {
+        color: var(--color-navy);
+        font-size: 0.95rem;
+        font-weight: 500;
+        line-height: 1.4rem;
+        margin-top: 1rem;
+        margin-bottom: 0;
+      }
+
+      /* Live element is an h6 with only size/leading set, so it keeps Bootstrap
+       reboot's weight, colour and bottom margin — matched here rather than
+       re-styled, even though this one is an h4 for outline reasons. */
+      .cSpeakerSide h4 {
+        font-size: 0.8rem;
+        line-height: 1.2rem;
+        color: inherit;
+        font-weight: 400;
+        margin: 0 0 0.5rem;
+      }
+
+      .cSpeakerLinkedin {
+        font-size: 0.78rem;
+        color: var(--color-navy);
+        text-decoration: none;
+      }
+
+      .cModelBio {
+        margin-top: 1rem;
+      }
+
+      .cModelBio .cBioText {
+        margin-bottom: 3rem;
+      }
+
+      /* The live site's bio has nothing after it, so its 3rem tail is just the
+       gap to the next speaker. Here a LinkedIn link can follow, and that gap
+       would strand the link between two speakers instead of under its own. */
+      .cModelBio .cBioText:has(+ a) {
+        margin-bottom: 0.75rem;
+      }
+
+      .cAlignCenter {
+        text-align: center;
+      }
+
+      /* ── Spacing ───────────────────────────────────────────── */
+      .cAgendaBlock {
+        padding-top: 2rem;
+      }
+
+      .cNameBlock {
+        padding-bottom: 0;
+        padding-top: 6rem;
+      }
+
+      /* ── Countdown widget (matches CON_STYLING.md §14) ───────── */
+      .countdown-widget {
+        background: var(--color-cyan);
+        color: var(--color-navy);
+        padding: 15px 20px;
+        border-radius: 12px;
+        width: 220px;
+        text-align: center;
+        box-shadow: 0 4px 12px var(--color-shadow-20);
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        z-index: 10000;
+      }
+
+      .countdown-widget .digits {
+        font-size: 1.3rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+        word-spacing: 6px;
+      }
+
+      .countdown-widget .countdown-dismiss {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        background: none;
+        border: none;
+        color: var(--color-navy);
+        font-size: 1rem;
+        cursor: pointer;
+        line-height: 1;
+      }
+
+      .countdown-widget p {
+        color: inherit;
+        margin: 0 0 4px;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="agenda-root">
+      <!-- Title + day tabs + track filter (col-lg-3 / col-lg-7 / col-lg-2).
+       Starts in normal flow; runtime.js swaps it to a fixed navy bar past a
+       100px scroll. -->
+      <section class="cAgenda" id="tab-bar">
+        <div class="container">
+          <div class="row align-items-center">
+            <div class="col-md-12 col-lg-3">
+              <h1 id="page-title">Agenda</h1>
+            </div>
+            <div class="col-md-12 col-lg-7">
+              <ul class="nav nav-tabs" id="day-tabs">%%DAY_TABS%%</ul>
+            </div>
+            <div class="col-md-12 col-lg-2">
+              <div class="cTrackFilter" id="track-filters">%%TRACK_FILTER%%</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="agenda-content">%%AGENDA_CONTENT%%</div>
+
+      <div id="agenda-modals">%%AGENDA_MODALS%%</div>
+
+      <div id="countdown-widget-slot">%%COUNTDOWN%%</div>
+    </div>
+
+    <!-- Bootstrap drives the session modals (data-bs-toggle). -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+%%RUNTIME%%
+    </script>
+  </body>
+</html>
