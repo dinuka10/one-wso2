@@ -293,15 +293,10 @@ export function downloadLegacyParPdf(
   // ---- 360° Feedback ----
   if (!hideThreeSixtyFeedback) {
     const reviews = parseLegacyFeedback360(record.feedback360);
-    // The on-screen view always shows the reviewer's own question caption
-    // (e.g. "What is the overall rating you would give based on your
-    // interactions?") above the comment -- prepended here the same way, so
-    // the PDF doesn't silently drop it for any era.
     const reviewRows: PdfRow[] = reviews.map((review) => {
       const rating = review.reviewRating ? stripRedundantRatingPrefix(review.reviewRating) : "";
       const ratingSuffix = rating ? ` (Rating: ${rating})` : "";
-      const comment = review.reviewComment ? htmlToPdfText(review.reviewComment) : "No comment provided";
-      const content = review.commentQuestion ? `${review.commentQuestion}\n\n${comment}` : comment;
+      const content = review.reviewComment ? htmlToPdfText(review.reviewComment) : "No comment provided";
       return [`${review.reviewerName}${ratingSuffix}`, { content, styles: contentStyles }];
     });
     addBlock("360° Feedback", reviewRows, "section");
