@@ -83,6 +83,12 @@ export const isLegacyLeadFeedbackDone = (record: ParLegacyHistory): boolean =>
 export const legacySpecialRating = (record: ParLegacyHistory) =>
   resolveLegacyRating(formatLegacyCycleName(record.cycleName), record.managerScoreCode, []).special;
 
+// Top 5%/20% ratings only exist from 2021 H1 onwards (see
+// resolveLegacyRating); earlier cycles never had them, so their slot counts
+// would always read 0 rather than mean "nobody was given one".
+export const legacyCycleHasSpecialRatings = (cycleName: string): boolean =>
+  Number(formatLegacyCycleName(cycleName).trim().slice(0, 4)) >= 2021;
+
 // The overall rating every admin legacy grid shows. Same resolver
 // ParLegacyRecordDetail uses, so a record can't show a different rating in a
 // list than once opened; each cycle has its own rating scale, so this can't

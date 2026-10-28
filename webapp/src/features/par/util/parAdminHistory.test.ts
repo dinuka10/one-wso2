@@ -15,7 +15,7 @@
 // under the License.
 
 import { describe, expect, it } from "vitest";
-import { buildAdminHistoryRows, groupLegacyParticipantsByTeam, legacyOverallRating } from "./parAdminHistory";
+import { buildAdminHistoryRows, groupLegacyParticipantsByTeam, legacyCycleHasSpecialRatings, legacyOverallRating } from "./parAdminHistory";
 import type { ParCycle, ParLegacyCycleSummary, ParLegacyHistory } from "../api/types";
 
 function cycle(overrides: Partial<ParCycle> = {}): ParCycle {
@@ -176,5 +176,18 @@ describe("legacyOverallRating", () => {
   it("falls back to overallRating, then Not Assigned, when no label resolves", () => {
     expect(legacyOverallRating(legacyRecord({ managerScoreCode: null, overallRating: "Exceeds" }))).toBe("Exceeds");
     expect(legacyOverallRating(legacyRecord({ managerScoreCode: null }))).toBe("Not Assigned");
+  });
+});
+
+describe("legacyCycleHasSpecialRatings", () => {
+  it("is false for cycles before 2021, which never had Top 5%/20% ratings", () => {
+    expect(legacyCycleHasSpecialRatings("2015 ANNUAL PERFORMANCE REVIEW for Engineering Employees")).toBe(false);
+    expect(legacyCycleHasSpecialRatings("2019  Performance Evaluation - Q2")).toBe(false);
+    expect(legacyCycleHasSpecialRatings("2020 Performance Evaluation - H2")).toBe(false);
+  });
+
+  it("is true from 2021 H1 onwards", () => {
+    expect(legacyCycleHasSpecialRatings("2021 Performance Evaluation - H1")).toBe(true);
+    expect(legacyCycleHasSpecialRatings("2024 Performance Evaluation - H1")).toBe(true);
   });
 });

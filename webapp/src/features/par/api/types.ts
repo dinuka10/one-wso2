@@ -331,6 +331,9 @@ export interface ParEmployee {
 export interface ParLegacyHistory {
   legacyHeaderId: number;
   employeeEmail: string;
+  // First and last name from the migrated sheet. Optional: a backend that
+  // predates the field omits it.
+  employeeName?: string | null;
   location: string | null;
   businessUnit: string | null;
   department: string | null;
